@@ -19,6 +19,8 @@ let fail = false, count = 0;
     }
     route.fulfill({ contentType: 'application/json', body: JSON.stringify(fixtures[key]) });
   });
+  let lrclibHits = 0; // songs here all have Amazon lyrics (badge shown), so LRCLIB must never be asked
+  await ctx.route(/lrclib\.net/, (r) => { lrclibHits++; r.fulfill({ status: 404, body: '' }); });
   await ctx.route('https://music.amazon.com/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: fs.readFileSync(__dirname + '/mock.html') }));
   if (!ctx.serviceWorkers().length) await ctx.waitForEvent('serviceworker');
   const page = await ctx.newPage();
@@ -30,6 +32,7 @@ let fail = false, count = 0;
   fail = false;
   const t0 = Date.now();
   await page.waitForFunction(() => document.querySelectorAll('.amlt').length === 3, null, { timeout: 150000 });
+  if (lrclibHits) throw new Error('LRCLIB was queried ' + lrclibHits + ' times');
   console.log(`PASS recovered after ${Math.round((Date.now() - t0) / 1000)} s; requests total=${count}; first line: ${JSON.stringify(await first())}`);
   await ctx.close();
 })().catch((e) => { console.error('FAIL', e.message); process.exit(1); });

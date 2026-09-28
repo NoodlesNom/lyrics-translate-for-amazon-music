@@ -17,6 +17,7 @@
   #force:disabled { opacity: .45; cursor: default; }
   #forceMsg:empty { display: none; }
   .note { color: #25d1da; } .note[data-kind=none], .note[data-kind=error] { color: #ffb300; }
+  .note[data-kind=amazon], .note[data-kind=checking], .note[data-kind=off] { color: rgba(255,255,255,.6); }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: #8a8f91; }
   [data-state=green] .dot { background: #3ddc84; } [data-state=amber] .dot { background: #ffb300; } [data-state=red] .dot { background: #ff5252; }
 </style>
@@ -42,7 +43,7 @@
     </select>
   </label>
   <div id="gstate" class="status" data-state="gray"><span class="dot"></span><span id="glabel"></span></div>
-  <div id="song" class="status">This song: no song. Open the lyrics view in Amazon Music.</div>
+  <div id="song" class="status">This song: nothing playing in Amazon Music.</div>
   <div id="lrcNote" class="status note" hidden></div>
   <button id="force" disabled title="Open a song's lyrics in Amazon Music first">Translate this song</button>
   <div id="forceMsg" class="status"></div>

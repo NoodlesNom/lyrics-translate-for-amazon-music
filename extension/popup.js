@@ -32,7 +32,8 @@ async function render() {
   const saved = Object.keys(all.idx || {}).filter((k) => !(all['lrc:' + k] && all['lrc:' + k].none && !all['song:' + k])).length; // LRCLIB "not found" markers aren't songs
   $('counter').textContent = `Saved songs: ${saved} (Gemini ${full('g')} · Google ${full('t')}) · ${size(bytes)}`;
 }
-// "Translate this song" (selected translator, Google if Gemini can't): enabled only when the active tab shows Amazon Music lyrics.
+// "Translate this song" (selected translator, Google if Gemini can't): enabled only when the active tab shows lyric lines
+// (Amazon's lyrics view, or the LRCLIB panel). "This song" names the mini-player's song whenever one is playing.
 let tabId = null, busy = false;
 async function findSong() {
   // In the page's floating panel (iframe) getCurrent() is the Amazon tab itself; in the toolbar popup it's undefined.
@@ -40,22 +41,33 @@ async function findSong() {
   const song = tab && (await chrome.tabs.sendMessage(tab.id, { type: 'song' }).catch(() => null));
   tabId = song && song.key ? tab.id : null;
   $('force').disabled = busy || !tabId;
-  const note = LRC_NOTES[(song && song.lrc) || ''];
-  $('song').textContent = 'This song: ' + (tabId ? await describe(song) : note && !song.key ? note.song : 'no song. Open the lyrics view in Amazon Music.');
-  $('lrcNote').hidden = !note;
-  $('lrcNote').textContent = note ? note.text : '';
-  $('lrcNote').dataset.kind = (song && song.lrc) || '';
+  const name = song && song.title ? song.title + (song.artist ? ' by ' + song.artist : '') : '';
+  const detail = tabId ? await describe(song) : '';
+  $('song').textContent = 'This song: ' + ([name, detail].filter(Boolean).join(' · ') || 'nothing playing in Amazon Music.');
+  const kind = noteKind(song);
+  $('lrcNote').hidden = !kind;
+  $('lrcNote').textContent = NOTES[kind] || '';
+  $('lrcNote').dataset.kind = kind;
 }
-// LRCLIB state for songs Amazon has no lyrics for (from the page; see lrcStatus() in content.js).
-const LRC_NOTES = {
-  synced: { text: 'Lyrics added from LRCLIB (synced)' },
-  unsynced: { text: 'Lyrics added from LRCLIB (unsynced)' },
-  'hidden-synced': { text: 'Lyrics from LRCLIB (synced), panel hidden for this song', song: 'lyrics panel hidden.' },
-  'hidden-unsynced': { text: 'Lyrics from LRCLIB (unsynced), panel hidden for this song', song: 'lyrics panel hidden.' },
-  pending: { text: 'Amazon has no lyrics; looking on LRCLIB…', song: 'no lyrics on Amazon.' },
-  none: { text: 'Amazon has no lyrics; none found on LRCLIB', song: 'no lyrics on Amazon.' },
-  error: { text: "Amazon has no lyrics; LRCLIB didn't answer, will retry", song: 'no lyrics on Amazon.' },
+// Where this song's lyrics come from (see lyricsState() and lrcStatus() in content.js). Hidden while Amazon's own lines are shown.
+const NOTES = {
+  amazon: 'Amazon has lyrics: open the lyrics view to translate them',
+  checking: 'Checking for lyrics…',
+  off: 'Amazon has no lyrics (finding lyrics on LRCLIB is off)',
+  synced: 'Lyrics added from LRCLIB (synced)',
+  unsynced: 'Lyrics added from LRCLIB (unsynced)',
+  'hidden-synced': 'Lyrics from LRCLIB (synced), panel hidden for this song',
+  'hidden-unsynced': 'Lyrics from LRCLIB (unsynced), panel hidden for this song',
+  pending: 'Amazon has no lyrics; looking on LRCLIB…',
+  none: 'Amazon has no lyrics; none found on LRCLIB',
+  error: "Amazon has no lyrics; LRCLIB didn't answer, will retry",
 };
+function noteKind(s) {
+  if (!s) return '';
+  if (s.key) return s.source === 'lrclib' ? s.lrc || '' : '';
+  if (s.lyrics === 'none') return s.lrc || ($('lrclib').checked ? 'pending' : 'off');
+  return s.lyrics === 'amazon' || s.lyrics === 'checking' ? s.lyrics : '';
+}
 
 // "This song": detected language(s) + how its lines are translated, from the cache entry the background keeps.
 const langName = (code) => { try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code.replace(/^iw/, 'he').split('-')[0]); } catch (e) { return code; } };

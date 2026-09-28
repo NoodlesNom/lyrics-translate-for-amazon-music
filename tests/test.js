@@ -69,6 +69,8 @@ const isLatin = (s) => !/[^\P{L}\p{Script=Latin}]/u.test(s);
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
   });
   await ctx.route(/clients5\.google\.com|translate\.googleapis\.com/, onTranslate);
+  let lrclibHits = 0; // songs here all have Amazon lyrics (badge shown), so LRCLIB must never be asked
+  await ctx.route(/lrclib\.net/, (r) => { lrclibHits++; r.fulfill({ status: 404, body: '' }); });
   await ctx.route('https://music.amazon.com/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: fs.readFileSync(__dirname + '/mock.html') }));
   let [sw] = ctx.serviceWorkers(); if (!sw) sw = await ctx.waitForEvent('serviceworker');
   const extId = sw.url().split('/')[2];
@@ -300,6 +302,7 @@ const isLatin = (s) => !/[^\P{L}\p{Script=Latin}]/u.test(s);
   await pop.screenshot({ path: __dirname + '/popup.png' });
 
   check('no page errors', errors.length === 0, errors.join(' | '));
+  check('LRCLIB never queried for songs Amazon has lyrics for', lrclibHits === 0, `hits=${lrclibHits}`);
   await ctx.close();
   fs.writeFileSync(__dirname + '/results.json', JSON.stringify(results, null, 1));
   console.log(`\n${results.filter((r) => r[0] === 'PASS').length}/${results.length} passed`);

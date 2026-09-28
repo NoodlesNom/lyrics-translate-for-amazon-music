@@ -11,20 +11,14 @@
   const MIN_ROWS = 3; // a line counts only if its list (h4 > row > list) holds at least this many lines
   // Now Playing title; the artist is assumed to be the next text element (not verified).
   const TITLE_SELECTOR = 'h4[data-testid="WidgetHeader_Primary_Related_playlists"]';
-  // --- Player bar (LRCLIB fallback). Found by structure, not classes: the smallest-height container at the bottom of the
-  // viewport (<= BAR_MAX_H px tall, >= 60% wide) around the Play/Pause button that also holds a progress slider or a m:ss time.
-  const PLAY_PAUSE_LABEL = /^(play|pause|resume)\b/i;             // aria-label of the transport button
-  const PROGRESS = '[role="slider"], [role="progressbar"], input[type="range"]';
-  const TIME_RE = /^-?\d{1,2}:\d{2}(?::\d{2})?$/;                  // elapsed "1:23", duration "3:19", remaining "-1:56"
-  const BAR_MAX_H = 200;
-  const TITLE_LINKS = 'a[href*="trackAsin="], a[href*="/tracks/"], a[href*="/albums/"]'; // only if mediaSession has no title
-  const ARTIST_LINKS = 'a[href*="/artists/"]';
-  // Amazon's own "no lyrics" signals: lyrics button disabled (or missing, once a lyrics button has been seen in the bar),
-  // or the lyrics view showing its empty state.
-  const LYRICS_BTN_IN_BAR = '[aria-label*="lyric" i], [data-testid*="lyric" i]';
-  const LYRICS_BTN_ANYWHERE = /^(show |hide |open |close )?lyrics$/i;
-  const NO_LYRICS_TESTID = '[data-testid*="nolyric" i], [data-testid*="lyric" i][data-testid*="empty" i], [data-testid*="lyric" i][data-testid*="unavailable" i]';
-  const NO_LYRICS_RE = /\b(no lyrics|lyrics (?:are |is )?(?:not |un)available|lyrics (?:aren.t|are not) available|couldn.t (?:find|load) (?:the )?lyrics)\b/i;
+  // --- Mini-player (verified live 2026-09-28). Control testids are comma lists, e.g. "IconButton,MiniPlayer_Pause".
+  const MINI = '[data-testid*="MiniPlayer_"]';
+  const MINI_TITLE = 'a[data-testid="MiniPlayer_Title"]';        // aria-label = title, href /tracks/<ASIN>?do=play
+  const MINI_ARTIST = 'a[href^="/artists/"]';                    // in the title's cluster, aria-label = artist(s) ("A, B & C")
+  const MINI_SLIDER = '[data-testid*="MiniPlayer_ProgressSlider"] [role="slider"]'; // aria-label "Playback 1:23 of 3:45"
+  // Amazon's lyrics indicator: a badge next to the mini-player title. No badge = Amazon has no lyrics for the song.
+  const LYRICS_BADGE = '[data-testid="Badge"][aria-label="Lyrics available"]';
+  const CLUSTER_UP = 4; // levels walked up from the title to the cluster that holds the title, artist and badge slots
   // ================================================================================================
 
   const NON_LATIN = /[^\P{L}\p{Script=Latin}]/u;
@@ -79,6 +73,8 @@
       const artist = title.nextElementSibling || (title.parentElement && title.parentElement.nextElementSibling);
       return 'dom:' + clean(title.textContent) + '|' + clean(artist && artist.textContent).slice(0, 80);
     }
+    const p = player();
+    if (p) return p.key;
     let h = 2166136261; // FNV-1a over the lyric set
     for (const c of texts.join('\n')) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); }
     return 'h:' + (h >>> 0).toString(36);
@@ -217,91 +213,80 @@
   window.addEventListener('message', (e) => { if (panel && e.source === panel.contentWindow && e.data === 'amlt-close') closePanel(); }); // Esc inside the panel
 
   // ===================== LRCLIB fallback: synced lyrics when Amazon has none =====================
-  // Runs only when Amazon itself says the current track has no lyrics (lyrics button disabled or missing, or the
-  // lyrics view's empty state), never just because the lyrics view is closed. Title/artist come from the media
-  // session (the player bar's links as a fallback), the duration from the player bar. The lookup and its cache
-  // live in background.js; this part shows the result in a small panel and highlights the line being sung.
-  const LRC_STABLE_MS = 1500; // Amazon's "no lyrics" state must hold this long for the same track before we look it up
+  // Amazon marks songs that have lyrics with a "Lyrics available" badge next to the mini-player title. A song counts as
+  // lyric-less only when the mini-player shows a title, Amazon's lyrics view shows no lines, and no such badge has
+  // appeared in the title's cluster for SETTLE_MS (badges can render after the title). Title, artist, track ASIN and
+  // the clock come from the mini-player. The lookup and its cache live in background.js; this part shows the result
+  // in a small panel above the mini-player and highlights the line being sung.
+  const SETTLE_MS = 1800;
   const LRC_RETRY_MS = 60000, LRC_TRIES = 3, LRC_LEAD = 0.15;
   let lrc = null;             // the panel: { id, key, panel, body, els, times, active, synced }
-  let lyricsBtnSeen = false;  // a lyrics button has been seen in the player bar (so "missing" means something)
-  let lrcSeen = { id: '', since: 0 }, lrcTimer = 0, lrcTick = 0, lrcHidden = '', lrcMin = false, barEl = null;
-  const lrcMemo = new Map();  // track id -> { state: pending|found|none|error, data, retryAt, tries }
+  let seen = { sig: '', since: 0 }, lrcId = '', lrcTimer = 0, lrcTick = 0, lrcHidden = '', lrcMin = false;
+  const lrcMemo = new Map();  // song id -> { state: pending|found|none|error, data, retryAt, tries }
 
-  const timeNodes = (root) => {
-    const out = [];
-    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    for (let n = w.nextNode(); n; n = w.nextNode()) {
-      const el = n.parentElement;
-      if (el && TIME_RE.test(n.nodeValue.trim()) && !isOurs(el) && !out.includes(el)) out.push(el);
-    }
-    return out;
-  };
-  const hasClock = (n) => !!n.querySelector(PROGRESS) || timeNodes(n).length > 0;
-  const transport = () => [...document.querySelectorAll('[role="button"][aria-label], button[aria-label]')]
-    .filter((b) => !isOurs(b) && PLAY_PAUSE_LABEL.test(b.getAttribute('aria-label').trim()));
-
-  // The player bar: a wide, short container at the bottom of the viewport around the Play/Pause button.
-  // Fallback (e.g. a full-screen Now Playing view with its own transport): the nearest ancestor with a clock.
-  function findBar() {
-    if (barEl && barEl.isConnected && hasClock(barEl)) return barEl;
-    barEl = null;
-    const vh = innerHeight, vw = innerWidth, buttons = transport();
-    for (const b of buttons) {
-      let best = null;
-      for (let n = b.parentElement, i = 0; n && n !== document.body && i < 14; n = n.parentElement, i++) {
-        const r = n.getBoundingClientRect();
-        if (r.height > BAR_MAX_H) break;
-        if (r.bottom >= vh - 8 && r.width >= vw * 0.6 && hasClock(n)) best = n;
-      }
-      if (best) return (barEl = best);
-    }
-    for (const b of buttons) {
-      for (let n = b.parentElement, i = 0; n && n !== document.body && i < 8; n = n.parentElement, i++) if (hasClock(n)) return (barEl = n);
-    }
-    return null;
+  const testids = (el) => (el.getAttribute('data-testid') || '').split(',').map((t) => t.trim());
+  const visible = (el) => el.getClientRects().length > 0;
+  const miniTitle = () => { const all = [...document.querySelectorAll(MINI_TITLE)]; return all.find(visible) || all[0] || null; };
+  const playButton = () => [...document.querySelectorAll(MINI)].find((e) => testids(e).some((t) => t === 'MiniPlayer_Pause' || t === 'MiniPlayer_Play'));
+  // The title's cluster: the nearest ancestor (a few levels up) that also holds the artist link, and so the badge slot.
+  function clusterOf(title) {
+    let n = title.parentElement;
+    for (let i = 0; n && n !== document.body && i < CLUSTER_UP; i++, n = n.parentElement) if (n.querySelector(MINI_ARTIST)) return n;
+    return (title.parentElement && title.parentElement.parentElement) || title.parentElement;
   }
 
-  const secs = (s) => s.replace('-', '').split(':').reduce((a, x) => a * 60 + Number(x), 0);
+  // The playing song as the mini-player shows it, or null when there's no mini-player title.
+  function player() {
+    const t = miniTitle();
+    const title = t && clean(t.getAttribute('aria-label') || t.textContent);
+    if (!title) return null;
+    const cluster = clusterOf(t);
+    const a = cluster && cluster.querySelector(MINI_ARTIST);
+    const artist = a ? clean(a.getAttribute('aria-label') || a.textContent) : '';
+    const asin = (/\/tracks\/([A-Za-z0-9]+)/.exec(t.getAttribute('href') || '') || [])[1] || '';
+    const key = asin ? 'asin:' + asin : 'bar:' + title + '|' + artist;
+    return { id: key, key, title, artist, asin, badge: !!(cluster && cluster.querySelector(LYRICS_BADGE)) };
+  }
+
+  // amazon = Amazon has lyrics (badge, or its lyrics view shows lines) | checking = no badge yet, within the settle
+  // window after a title change | none = Amazon has no lyrics | '' = no mini-player title.
+  function lyricsState(p, amazonHasLines) {
+    if (!p) return '';
+    const sig = p.badge || amazonHasLines ? '' : p.id; // the settle window restarts whenever this changes
+    if (sig !== seen.sig) seen = { sig, since: Date.now() };
+    if (!sig) return 'amazon';
+    const wait = seen.since + SETTLE_MS - Date.now();
+    if (wait > 0) { clearTimeout(lrcTimer); lrcTimer = setTimeout(() => schedule(0), wait + 20); return 'checking'; }
+    return 'none';
+  }
+
+  // Clock: a reachable <audio>/<video> (exact), else the mini-player slider: its aria-label "Playback 1:23 of 3:45"
+  // (m:ss or h:mm:ss, any language) and aria-valuenow/valuemax when they are present and fit the duration.
+  const TIMES = /\d{1,2}(?::\d{2}){1,2}/g;
+  const secs = (s) => s.split(':').reduce((a, x) => a * 60 + Number(x), 0);
   const attrNum = (el, a) => { const v = el.getAttribute(a); return v === null || v === '' || isNaN(v) ? null : Number(v); };
-  function progressOf(bar) {
-    const all = [...bar.querySelectorAll(PROGRESS)].filter((e) => !/volume/i.test(e.getAttribute('aria-label') || ''));
-    return all.find((e) => /progress|seek|playback|position|scrub|time|track/i.test(e.getAttribute('aria-label') || ''))
-      || all.sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0] || null;
-  }
-  function playingState(bar) {
+  function playing() {
+    const b = playButton(), label = b && (b.getAttribute('aria-label') || '').trim();
+    if (label && /^(pause|play)\b/i.test(label)) return /^pause/i.test(label);
     const ps = navigator.mediaSession && navigator.mediaSession.playbackState;
-    if (ps === 'playing' || ps === 'paused') return ps === 'playing';
-    const b = bar && [...bar.querySelectorAll('[aria-label]')].find((e) => PLAY_PAUSE_LABEL.test(e.getAttribute('aria-label').trim()));
-    return b ? /^pause/i.test(b.getAttribute('aria-label').trim()) : null;
+    return ps === 'playing' || ps === 'paused' ? ps === 'playing' : null;
   }
-  // Where playback time lives: a reachable <audio>/<video> (exact), else the player bar's progress slider and/or m:ss texts.
-  function readClock(bar) {
+  function readClock() {
     const media = [...document.querySelectorAll('audio, video')].find((m) => m.duration > 0 && isFinite(m.duration));
     if (media) return { pos: media.currentTime, dur: media.duration, playing: !media.paused, exact: true };
-    if (!bar) return null;
-    const texts = timeNodes(bar).map((e) => e.textContent.trim());
-    let elapsed = null, dur = null;
-    const plain = texts.filter((t) => !t.startsWith('-')), remain = texts.find((t) => t.startsWith('-'));
-    if (plain.length) elapsed = secs(plain[0]);
-    if (remain && elapsed !== null) dur = elapsed + secs(remain);
-    else if (plain.length >= 2) dur = secs(plain[plain.length - 1]);
-    let pos = elapsed;
-    const sl = progressOf(bar);
-    if (sl) {
-      const vt = (sl.getAttribute('aria-valuetext') || '').match(/\d{1,2}:\d{2}(?::\d{2})?/g);
-      if (vt && vt.length >= 2 && dur === null) dur = secs(vt[1]);
-      const now = sl.tagName === 'INPUT' ? Number(sl.value) : attrNum(sl, 'aria-valuenow');
-      const min = (sl.tagName === 'INPUT' ? Number(sl.min) : attrNum(sl, 'aria-valuemin')) || 0;
-      const max = sl.tagName === 'INPUT' ? Number(sl.max) : attrNum(sl, 'aria-valuemax');
-      if (dur === null && max > 1 && max !== 100) dur = max > 3600 ? max / 1000 : max;
-      if (now !== null && max > min && dur) pos = ((now - min) / (max - min)) * dur;
-      else if (pos === null && vt && vt.length) pos = secs(vt[0]);
+    const sl = [...document.querySelectorAll(MINI_SLIDER)].find(visible) || document.querySelector(MINI_SLIDER);
+    if (!sl) return null;
+    const t = (sl.getAttribute('aria-label') || '').match(TIMES) || [];
+    let pos = t.length ? secs(t[0]) : null, dur = t.length > 1 ? secs(t[1]) : null;
+    const now = attrNum(sl, 'aria-valuenow'), min = attrNum(sl, 'aria-valuemin') || 0, max = attrNum(sl, 'aria-valuemax');
+    if (now !== null && max > min) {
+      const span = max - min;
+      const unit = dur ? (Math.abs(span - dur) <= 2 ? 1 : Math.abs(span / 1000 - dur) <= 2 ? 1000 : 0) : span > 36000 ? 1000 : span > 1 && span !== 100 ? 1 : 0;
+      if (unit) { pos = (now - min) / unit; if (!dur) dur = span / unit; }
     }
     if (pos === null) return dur ? { pos: null, dur } : null;
-    return { pos, dur, playing: playingState(bar) };
+    return { pos, dur, playing: playing() };
   }
-
   // Sub-second position from a clock that only changes once a second: re-anchor on every change, extrapolate while
   // playing (at most ~1.25 s past the last change, so a stalled or paused clock freezes the highlight), jump on seek.
   let anchor = null;
@@ -317,65 +302,28 @@
     return playing ? anchor.pos + Math.min((now - anchor.t) / 1000, 1.25) : anchor.pos;
   }
 
-  function lyricsButton(bar) {
-    let cands = bar ? [...bar.querySelectorAll(LYRICS_BTN_IN_BAR)] : [];
-    if (!cands.length) {
-      cands = [...document.querySelectorAll('[aria-label], [data-testid*="lyric" i]')].filter((e) =>
-        LYRICS_BTN_ANYWHERE.test((e.getAttribute('aria-label') || '').trim()) || /lyric/i.test(e.getAttribute('data-testid') || ''));
-    }
-    cands = cands.filter((e) => !isOurs(e) && e.matches('button, [role="button"], [role="tab"], [role="switch"], [role="checkbox"], a'));
-    if (!cands.length) return 'missing';
-    const off = (e) => e.disabled || e.getAttribute('aria-disabled') === 'true' || !!e.closest('[aria-disabled="true"]');
-    return cands.some((e) => !off(e)) ? 'enabled' : 'disabled';
-  }
-  function noLyricsView() {
-    if (document.querySelector(NO_LYRICS_TESTID)) return true;
-    const overlay = document.querySelector('[data-testid="Stage_OverlaysContainer"]');
-    return !!(overlay && NO_LYRICS_RE.test(overlay.textContent || ''));
-  }
-  const linkTexts = (bar, sel) => [...new Set([...bar.querySelectorAll(sel)].map((a) => clean(a.textContent)).filter(Boolean))];
-
-  function player() {
-    const bar = findBar();
-    const md = navigator.mediaSession && navigator.mediaSession.metadata;
-    let title = md && clean(md.title), artist = md && clean(md.artist), key = md && md.title ? 'ms:' + md.title + '|' + (md.artist || '') : '';
-    if ((!title || !artist) && bar) {
-      title = linkTexts(bar, TITLE_LINKS)[0];
-      artist = linkTexts(bar, ARTIST_LINKS).join(', ');
-      key = 'bar:' + title + '|' + artist;
-    }
-    if (!title || !artist) return null;
-    const c = readClock(bar);
-    return { id: title + '\u0001' + artist, key, title, artist, duration: c && c.dur, bar };
-  }
-
   function checkLrc(amazonHasLines) {
-    const p = settings.lrclib && !dead ? player() : null;
-    let none = false;
-    if (p && !amazonHasLines) {
-      const btn = lyricsButton(p.bar);
-      if (btn === 'enabled' && !lyricsBtnSeen) { lyricsBtnSeen = true; chrome.storage.local.set({ lyricsBtnSeen: true }).catch(() => {}); }
-      none = noLyricsView() || btn === 'disabled' || (btn === 'missing' && lyricsBtnSeen && !!p.bar);
-    } else if (p && lyricsButton(p.bar) === 'enabled' && !lyricsBtnSeen) { lyricsBtnSeen = true; chrome.storage.local.set({ lyricsBtnSeen: true }).catch(() => {}); }
-    const id = none ? p.id : '';
-    if (id !== lrcSeen.id) lrcSeen = { id, since: Date.now() };
+    const p = dead ? null : player();
+    const state = lyricsState(p, amazonHasLines);
+    const id = settings.lrclib && state === 'none' ? p.id : '';
+    lrcId = id;
     if (!id || (lrc && lrc.id !== id)) hideLrc();
     if (!id) return;
     if (lrc) return placeLrc();
-    const wait = lrcSeen.since + LRC_STABLE_MS - Date.now();
-    if (wait > 0) { clearTimeout(lrcTimer); lrcTimer = setTimeout(() => schedule(0), wait + 20); return; }
     const m = lrcMemo.get(id);
     if (!m || (m.state === 'error' && m.retryAt <= Date.now() && m.tries < LRC_TRIES)) return lookupLrc(p, m);
     if (m.state === 'found' && lrcHidden !== id) showLrc(p, m.data);
   }
 
   function lookupLrc(p, prev) {
-    if (!(p.duration > 0)) return; // no duration yet: the next scan (the clock ticks) tries again; never look up without it
+    const c = readClock();
+    const duration = c && c.dur;
+    if (!(duration > 0)) { clearTimeout(lrcTimer); lrcTimer = setTimeout(() => schedule(0), 1000); return; } // never look up without it
     const m = { state: 'pending', tries: ((prev && prev.tries) || 0) + 1 };
     lrcMemo.set(p.id, m);
     let resp;
     try {
-      resp = chrome.runtime.sendMessage({ type: 'lrclib', key: p.key, title: p.title, artist: p.artist, duration: p.duration });
+      resp = chrome.runtime.sendMessage({ type: 'lrclib', key: p.key, title: p.title, artist: p.artist, duration });
     } catch (e) { return shutdown(); }
     resp.then((res) => {
       if (res && res.status === 'found') Object.assign(m, { state: 'found', data: res });
@@ -452,18 +400,30 @@
     anchor = null;
   }
 
-  // Sits above the player bar, at the right edge (below the floating button's panel).
+  // Sits above the mini-player (its whole bar: the smallest box holding its title and Play/Pause button), right edge.
+  function miniTop() {
+    const t = miniTitle(), b = playButton();
+    let root = t && b ? t.parentElement : null;
+    while (root && !root.contains(b)) root = root.parentElement;
+    const r = root && root.getBoundingClientRect();
+    if (r && r.height > 0 && r.height <= innerHeight * 0.4) return r.top;
+    let top = Infinity; // no compact bar: the highest mini-player part in the lower half of the window
+    for (const el of [t, ...document.querySelectorAll(MINI)]) {
+      const q = el && el.getBoundingClientRect();
+      if (q && q.height > 0 && q.top > innerHeight / 2) top = Math.min(top, q.top);
+    }
+    return top === Infinity ? innerHeight - 90 : top;
+  }
   function placeLrc() {
     if (!lrc) return;
-    const top = barEl && barEl.isConnected ? barEl.getBoundingClientRect().top : innerHeight - 90;
-    const bottom = Math.max(12, Math.round(innerHeight - top + 12));
+    const bottom = Math.max(12, Math.round(innerHeight - miniTop() + 12));
     lrc.panel.style.bottom = bottom + 'px';
     lrc.panel.style.maxHeight = Math.max(160, Math.min(Math.round(innerHeight * 0.6), innerHeight - bottom - 140)) + 'px';
   }
 
   function tickLrc() {
     if (!lrc || !lrc.synced || dead) return;
-    const c = readClock(findBar());
+    const c = readClock();
     if (!c || c.pos === null) return;
     const pos = position(c) + LRC_LEAD;
     let lo = 0, hi = lrc.times.length;
@@ -486,8 +446,8 @@
   function lrcStatus() {
     if (dead || !settings.lrclib) return '';
     if (lrc) return lrc.synced ? 'synced' : 'unsynced';
-    const m = lrcSeen.id && lrcMemo.get(lrcSeen.id);
-    if (!m) return lrcSeen.id ? 'pending' : '';
+    const m = lrcId && lrcMemo.get(lrcId);
+    if (!m) return lrcId ? 'pending' : '';
     if (m.state === 'found') return 'hidden-' + (m.data.synced && m.data.synced.length ? 'synced' : 'unsynced');
     return m.state === 'none' ? 'none' : m.state === 'error' ? 'error' : 'pending';
   }
@@ -514,27 +474,29 @@
   });
 
   // Popup: the current song (its button and "This song" line), and force a fresh translation.
-  // Songs shown from LRCLIB (Amazon has no lyrics) work the same way, keyed by the player's title/artist.
+  // title/artist/lyrics come from the mini-player whenever a song is playing, even with Amazon's lyrics view closed.
+  // Songs shown from LRCLIB (Amazon has no lyrics) work the same way, keyed by the mini-player's track.
   chrome.runtime.onMessage.addListener((msg, _sender, send) => {
     let els = dead ? [] : findLines();
-    const fromLrc = !els.length && !!lrc && !dead;
+    const amazon = els.length > 0;
+    const fromLrc = !amazon && !!lrc && !dead;
     if (fromLrc) els = lrc.els;
     const texts = els.map(lineText).filter((t) => /\p{L}/u.test(t));
-    const lrcState = lrcStatus();
-    if (!texts.length) return send(msg.type === 'song' && lrcState ? { lrc: lrcState } : {});
+    const p = dead ? null : player();
+    const now = p ? { title: p.title, artist: p.artist, lyrics: lyricsState(p, amazon), lrc: lrcStatus() } : {};
+    if (!texts.length) return send(msg.type === 'song' ? now : {});
     const lines = [...new Set(texts)];
     const key = fromLrc ? lrc.key : songKey(texts);
     if (msg.type === 'song') {
-      return send({ key, lines, source: fromLrc ? 'lrclib' : 'amazon', lrc: fromLrc ? lrcState : undefined, pending: lines.some((l) => inflight.has(l)), failed: lines.some((l) => retryAt.get(l) > Date.now()) });
+      return send({ ...now, key, lines, source: fromLrc ? 'lrclib' : 'amazon', lrc: fromLrc ? lrcStatus() : undefined, pending: lines.some((l) => inflight.has(l)), failed: lines.some((l) => retryAt.get(l) > Date.now()) });
     }
     if (msg.type === 'force') { request(lines, key, send); return true; }
   });
 
-  chrome.storage.local.get('lyricsBtnSeen').then((r) => { lyricsBtnSeen = lyricsBtnSeen || !!r.lyricsBtnSeen; }, () => {});
   chrome.storage.sync.get(settings).then((s) => {
     settings = s;
     applySize();
-    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['aria-label', 'href', 'data-testid'] });
     schedule(0);
   });
 })();

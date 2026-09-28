@@ -16,8 +16,8 @@ This policy covers the Microsoft Edge extension "Lyrics Translate & Romanize for
 The extension runs only on `https://music.amazon.com/*`. There it reads:
 
 - the text of the lyric lines shown in the lyrics view, and
-- the current song's title and artist (from the browser's media-session information, the Now Playing heading or the player bar), used as a local cache key so a song isn't translated twice, and, for songs Amazon has no lyrics for, to look up lyrics on LRCLIB, and
-- from the player bar: the song's duration and playback position (to find the matching lyrics and highlight the current line) and whether Amazon's lyrics button is available.
+- the current song's title, artist and Amazon track ID (from the browser's media-session information, the Now Playing heading or the player bar), used as a local cache key so a song isn't translated twice, and, for songs Amazon has no lyrics for, to look up lyrics on LRCLIB, and
+- from the player bar: the song's duration and playback position (to find the matching lyrics and highlight the current line) and whether Amazon shows its "Lyrics available" badge for the song.
 
 It does not read cookies, your account, your listening history, or any other site.
 

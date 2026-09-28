@@ -49,6 +49,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   const idx = all.idx || {};
   for (const k of Object.keys(all)) if (k.startsWith('song:') && !(k.slice(5) in idx)) idx[k.slice(5)] = all[k].ts || 0;
   await chrome.storage.local.set({ idx });
+  await chrome.storage.local.remove('lyricsBtnSeen'); // v1.3.0 detection state, no longer used
 });
 
 // lines = all unique lyric lines of the current song, in order.

@@ -19,7 +19,7 @@ A free Microsoft Edge extension (Manifest V3, plain JS/HTML/CSS) that translates
 - **Floating button** on the page that opens the popup as an in-page panel.
 - **Per-song cache:** up to 2000 songs, per translator and language; the least recently played songs are removed first.
 - **Skips songs already in your language**, so an English song with English selected never uses your Gemini quota.
-- **Lyrics when Amazon has none (new in 1.3.0):** if Amazon Music has no lyrics for the current song, they're looked up on [LRCLIB](https://lrclib.net) (free, open lyrics database) and shown in a small panel above the player bar, with the current line highlighted in sync with playback, translated and romanized like Amazon's own lyrics. The popup shows "Lyrics added from LRCLIB (synced/unsynced)" or "Amazon has no lyrics; none found on LRCLIB". Only close matches (same title and artist, duration within 3 s) are used. Toggle: **Find lyrics when Amazon has none** (on by default).
+- **Lyrics when Amazon has none (new in 1.3.0):** if Amazon Music has no lyrics for the current song (no "LYRICS" badge next to the title in the player bar), they're looked up on [LRCLIB](https://lrclib.net) (free, open lyrics database) and shown in a small panel above the player bar, with the current line highlighted in sync with playback, translated and romanized like Amazon's own lyrics. The popup shows "Lyrics added from LRCLIB (synced/unsynced)" or "Amazon has no lyrics; none found on LRCLIB". Only close matches (same title and artist, duration within 3 s) are used. Toggle: **Find lyrics when Amazon has none** (on by default).
 
 ## Install
 
@@ -37,7 +37,7 @@ The developer collects no data and there are no analytics. The lyric lines on sc
 | Permission | Why |
 | --- | --- |
 | `storage` | Settings (sync storage); Gemini key, Gemini status, the translation cache and the LRCLIB lyrics cache (local storage). |
-| Content script on `https://music.amazon.com/*` | Reads the lyric lines on screen and the player bar (song, playback time, lyrics button), and adds the translation/romanization lines, the floating button and the LRCLIB lyrics panel. Runs on no other site. |
+| Content script on `https://music.amazon.com/*` | Reads the lyric lines on screen and the player bar (song title, artist and track link, playback time, the "Lyrics available" badge), and adds the translation/romanization lines, the floating button and the LRCLIB lyrics panel. Runs on no other site. |
 | `https://clients5.google.com/*`, `https://translate.googleapis.com/*` | Google Translate web endpoints (the second is a fallback) for translation and romanization. |
 | `https://generativelanguage.googleapis.com/*` | Gemini API, only when you saved your own key and Gemini is selected. |
 | `https://lrclib.net/*` | LRCLIB lyrics API, only for songs Amazon has no lyrics for (title, artist and duration are sent), while "Find lyrics when Amazon has none" is on. |

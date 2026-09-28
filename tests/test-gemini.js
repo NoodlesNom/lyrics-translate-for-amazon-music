@@ -59,6 +59,8 @@ const waitTrans = (page, text) => page.waitForFunction((t) => [...document.query
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`] });
   await ctx.route(/generativelanguage\.googleapis\.com/, onGemini);
   await ctx.route(/clients5\.google\.com|translate\.googleapis\.com/, onGoogle);
+  let lrclibHits = 0; // songs here all have Amazon lyrics (badge shown), so LRCLIB must never be asked
+  await ctx.route(/lrclib\.net/, (r) => { lrclibHits++; r.fulfill({ status: 404, body: '' }); });
   await ctx.route('https://music.amazon.com/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: fs.readFileSync(__dirname + '/mock.html') }));
   let [sw] = ctx.serviceWorkers(); if (!sw) sw = await ctx.waitForEvent('serviceworker');
   const extId = sw.url().split('/')[2];
@@ -207,20 +209,20 @@ const waitTrans = (page, text) => page.waitForFunction((t) => [...document.query
     const ok = await pop.waitForFunction((t) => document.querySelector('#song').textContent === 'This song: ' + t, text, { timeout: 8000 }).then(() => true, () => false);
     return [ok, await pop.textContent('#song')];
   };
-  await page.goto('https://music.amazon.com/?song=0'); await page.waitForTimeout(800);
+  await page.goto('https://music.amazon.com/?song=0&mini=0'); await page.waitForTimeout(800);
   await pointPopupAt(tabId);
   const offNoLyrics = await pop.isDisabled('#force');
   await pointPopupAt(999999);
   await pointPopupAt(tabId);
-  check('"This song": no song → "no song. Open the lyrics view in Amazon Music."', ...await songLine('no song. Open the lyrics view in Amazon Music.'));
+  check('"This song": nothing playing (no mini-player, no lyrics) → "nothing playing in Amazon Music."', ...await songLine('nothing playing in Amazon Music.'));
   await pointPopupAt(999999);
   check('(d) no current song (Amazon tab without lyrics, or no Amazon tab) → button disabled', tabId && offNoLyrics && (await pop.isDisabled('#force')) && (await pop.textContent('#force')) === 'Translate this song');
 
   await page.goto('https://music.amazon.com/?song=5'); await page.waitForTimeout(1200);
   await pointPopupAt(tabId);
-  check('"This song": English song, target en → "English · Already in English, no translation needed"', ...await songLine('English · Already in English, no translation needed'));
+  check('"This song": English song, target en → "<title> by <artist> · English · Already in English, no translation needed"', ...await songLine('Paper Planes (Test) by English Mock · English · Already in English, no translation needed'));
   await page.goto('https://music.amazon.com/?song=7'); await page.waitForTimeout(1200);
-  check('"This song": Japanese song (with English lines) translated by Gemini, replayed → Japanese + English, Gemini, from cache', ...await songLine('Japanese + English · Translated with Gemini (from cache)'));
+  check('"This song": Japanese song (with English lines) translated by Gemini, replayed → Japanese + English, Gemini, from cache', ...await songLine('Mixed Lantern (Test) by Mock Artist · Japanese + English · Translated with Gemini (from cache)'));
   await pop.screenshot({ path: __dirname + '/popup-song.png' });
 
   gReqs = []; tReqs = [];
@@ -252,7 +254,7 @@ const waitTrans = (page, text) => page.waitForFunction((t) => [...document.query
   tr = await transOf();
   check('(c) mismatch on a forced song → Google fallback shown, with a note', gReqs.length === 1 && (await status()).code === 'mismatch'
     && JSON.stringify(tr) === JSON.stringify(Object.values(ES)) && msgC === 'Gemini unexpected reply, so translated with Google.', `${msgC} ${JSON.stringify(tr)}`);
-  check('"This song": after the Google fallback → "Spanish · Translated with Google"', ...await songLine('Spanish · Translated with Google'));
+  check('"This song": after the Google fallback → "Spanish · Translated with Google"', ...await songLine('Mar Azul (Test) by Mock Español · Spanish · Translated with Google'));
   gmode = 'ok';
 
   await sw.evaluate(() => chrome.storage.local.remove('geminiKey'));
@@ -382,6 +384,7 @@ const waitTrans = (page, text) => page.waitForFunction((t) => [...document.query
   check('popup "Settings" link opens the options page', optPage.url().endsWith('/options.html'));
 
   check('no page errors', errors.length === 0, errors.join(' | '));
+  check('LRCLIB never queried for songs Amazon has lyrics for', lrclibHits === 0, `hits=${lrclibHits}`);
   const logText = fs.existsSync(__dirname + '/run-gemini.log') ? fs.readFileSync(__dirname + '/run-gemini.log', 'utf8') : '';
   check('fake key never appears in the log output', !logText.includes(FAKE_KEY));
   await ctx.close();

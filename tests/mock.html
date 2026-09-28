@@ -23,6 +23,10 @@
       <div class="css-175oi2r" style="width:160px"><h4 dir="auto" aria-hidden="true" aria-level="4" role="heading" tabindex="-1" class="css-1jxf684 r-1w6e6rj">見出しのデコイ二</h4></div>
       <div class="css-175oi2r" style="width:160px"><h4 dir="auto" aria-hidden="true" aria-level="4" role="heading" tabindex="-1" class="css-1jxf684 r-1w6e6rj">見出しのデコイ三</h4></div>
     </div>
+    <!-- a track row with its own lyrics badge (decoy: it is not the playing song's) -->
+    <div class="css-175oi2r r-18u37iz r-1awozwy" style="gap:6px"><a role="link" aria-label="Decoy Row (Test)" href="/tracks/B0DECOYROW" class="css-1jxf684">Decoy Row (Test)</a>
+      <div data-testid="Box,BadgeGroup" class="css-175oi2r r-18u37iz"><div data-testid="Badge" aria-label="Lyrics available" class="css-175oi2r"><span class="css-1jxf684">LYRICS</span></div></div>
+      <a href="/artists/B0DECOYART/decoy" aria-label="Decoy Artist" class="css-1jxf684">Decoy Artist</a></div>
   </div>
   <section role="region" tabindex="-1" class="css-175oi2r r-1p0dtai r-1d2f490" style="position:absolute;inset:0;z-index:2;background:radial-gradient(circle at 20% 10%,#13324a 0,#0a0f1a 55%,#000 100%)">
     <!-- Amazon-style top-right controls (collapse / queue / profile) that the floating button must not cover -->
@@ -47,24 +51,37 @@
   </section>
   <!-- page clock (ticks every 500 ms, like Amazon's ever-changing DOM); kept outside the player bar -->
   <div id="clock" dir="auto" class="css-1jxf684" style="position:fixed;left:8px;top:4px;z-index:4;color:rgba(255,255,255,.3);font-size:10px">tick 0</div>
-  <!-- player bar (INVENTED structure, not copied from Amazon): title/artist links, transport, elapsed / progress / duration, lyrics button -->
-  <div id="playerBar" class="css-175oi2r r-18u37iz r-1awozwy" style="position:fixed;left:0;right:0;bottom:0;height:72px;z-index:3;background:#111;padding:0 24px;gap:16px">
-    <div class="css-175oi2r" style="width:220px">
-      <a id="barTitle" dir="auto" class="css-1jxf684 r-link" href="/albums/B0MOCKALB?trackAsin=B0MOCKTRK" style="color:#fff;text-decoration:none"></a>
-      <a id="barArtist" dir="auto" class="css-1jxf684 r-link" href="/artists/B0MOCKART/mock-artist" style="color:rgba(255,255,255,.6);text-decoration:none"></a>
+  <!-- Mini-player: mirrors the live markup inspected 2026-09-28 (testids, roles, aria-labels; the tag/class soup is fake).
+       Songs with lyrics have Box,BadgeGroup > Badge[aria-label="Lyrics available"] next to the title; songs without have
+       an empty placeholder div there. There are no time texts: the time is only in the slider's aria-label. -->
+  <div id="miniPlayer" class="css-175oi2r r-18u37iz r-1awozwy" style="position:fixed;left:0;right:0;bottom:0;height:88px;z-index:3;background:#111;padding:0 24px;gap:16px">
+    <div class="css-175oi2r r-18u37iz r-1awozwy" style="width:380px;gap:12px">
+      <div class="css-175oi2r" style="width:56px;height:56px;border-radius:4px;background:#25d1da44"></div>
+      <div class="css-175oi2r r-13awgt0">
+        <div class="css-175oi2r r-18u37iz r-1awozwy" style="gap:6px">
+          <a data-testid="MiniPlayer_Title" role="link" aria-label="" href="/tracks/B0MOCK0000?do=play" class="css-1jxf684 r-link" style="color:#fff;text-decoration:none"><span dir="auto" class="css-1jxf684"></span></a>
+          <div class="css-175oi2r"></div>
+        </div>
+        <div class="css-175oi2r r-18u37iz">
+          <a href="/artists/B0MOCKART/mock-artist" aria-label="" class="css-1jxf684 r-link" style="color:rgba(255,255,255,.6);text-decoration:none"><span dir="auto" class="css-1jxf684"></span></a>
+        </div>
+      </div>
+      <div role="button" tabindex="0" data-testid="IconButton,MiniPlayer_Follow_Follow" aria-label="Follow" class="css-175oi2r" style="width:28px;height:28px;border-radius:14px;background:#ffffff22"></div>
+      <div role="button" tabindex="0" data-testid="IconButton,MiniPlayer_ContextMenu" aria-label="More options" class="css-175oi2r" style="width:28px;height:28px;border-radius:14px;background:#ffffff22"></div>
     </div>
-    <div class="css-175oi2r r-18u37iz r-1awozwy" style="gap:10px">
-      <div role="button" tabindex="0" aria-label="Previous" style="width:28px;height:28px;border-radius:14px;background:#ffffff22"></div>
-      <div id="playBtn" role="button" tabindex="0" aria-label="Pause" style="width:36px;height:36px;border-radius:18px;background:#ffffff44"></div>
-      <div role="button" tabindex="0" aria-label="Next" style="width:28px;height:28px;border-radius:14px;background:#ffffff22"></div>
+    <div class="css-175oi2r r-13awgt0 r-1awozwy" style="gap:8px">
+      <div class="css-175oi2r r-18u37iz r-1awozwy" style="gap:10px">
+        <div role="button" tabindex="0" data-testid="IconButton,MiniPlayer_PreviousButton" aria-label="Previous" class="css-175oi2r" style="width:28px;height:28px;border-radius:14px;background:#ffffff22"></div>
+        <div role="button" tabindex="0" data-testid="IconButton,MiniPlayer_Pause" aria-label="Pause" class="css-175oi2r" style="width:36px;height:36px;border-radius:18px;background:#ffffff44"></div>
+        <div role="button" tabindex="0" data-testid="IconButton,MiniPlayer_NextButton" aria-label="Next" class="css-175oi2r" style="width:28px;height:28px;border-radius:14px;background:#ffffff22"></div>
+      </div>
+      <div data-testid="Slider,MiniPlayer_ProgressSlider" class="css-175oi2r" style="align-self:stretch">
+        <div role="slider" tabindex="0" aria-label="Playback 0:00 of 0:00" class="css-175oi2r" style="height:4px;background:#ffffff33;border-radius:2px"><div class="css-175oi2r" style="height:4px;width:0;background:#25d1da"></div></div>
+      </div>
     </div>
-    <div class="css-175oi2r r-18u37iz r-1awozwy r-13awgt0" style="gap:10px">
-      <div id="elapsed" dir="auto" class="css-1jxf684" style="color:rgba(255,255,255,.6);font-size:12px">0:00</div>
-      <div id="progress" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" class="css-175oi2r r-13awgt0" style="height:4px;background:#ffffff33;border-radius:2px"><div id="progressFill" style="height:4px;width:0;background:#25d1da"></div></div>
-      <div id="duration" dir="auto" class="css-1jxf684" style="color:rgba(255,255,255,.6);font-size:12px">0:00</div>
+    <div class="css-175oi2r r-18u37iz r-1awozwy" style="width:120px;justify-content:flex-end">
+      <div role="button" tabindex="0" data-testid="IconButton,MiniPlayer_PlayQueueButton" aria-label="Play queue" class="css-175oi2r" style="width:28px;height:28px;border-radius:6px;background:#ffffff22"></div>
     </div>
-    <div id="lyricsBtn" role="button" tabindex="0" aria-label="Lyrics" style="width:28px;height:28px;border-radius:6px;background:#ffffff22"></div>
-    <div role="button" tabindex="0" aria-label="Volume" style="width:28px;height:28px;border-radius:6px;background:#ffffff22"></div>
   </div>
 </div>
 <script>
@@ -91,12 +108,13 @@
     6: { title: 'Mar Azul (Test)', artist: 'Mock Español', lines: ['Las olas cantan en la arena', 'Mi barco duerme junto al muelle', 'La luna pinta el agua de plata'] },
     8: { title: 'Mixed Tide (Test)', artist: 'Mock Español', lines: ['We fold the paper planes at dawn', 'Las olas cantan en la arena', 'The kettle hums a sleepy tune', 'Mi barco duerme junto al muelle'] },
     7: { title: 'Mixed Lantern (Test)', artist: 'Mock Artist', lines: ['夜の窓に小さな星が光る', '青い傘を持って歩いた', 'The city lights are humming low', 'I keep a paper boat for you'] },
-    // Amazon has NO lyrics for these (lyrics button disabled unless ?lyricsbtn= says otherwise)
+    // Amazon has NO lyrics for these: no "Lyrics available" badge (unless ?badge= says otherwise)
     9: { title: 'Glass Harbor (Test)', artist: 'Mock Singer', dur: 200, lines: [], nolyrics: true },
     10: { title: 'Tin Roof (Test)', artist: 'Mock Singer & Guest', dur: 180, lines: [], nolyrics: true },
     11: { title: 'Far Off (Test)', artist: 'Mock Singer', dur: 180, lines: [], nolyrics: true },
     12: { title: 'Nowhere (Test)', artist: 'Mock Nobody', dur: 150, lines: [], nolyrics: true },
     13: { title: 'Split Signal (Test)', artist: 'Mock Singer', dur: 199, lines: [], nolyrics: true },
+    14: { title: 'Long Night (Test)', artist: 'Mock Orchestra', dur: 3725, lines: [], nolyrics: true }, // h:mm:ss clock
   };
   const H4_STYLE = 'font-family: EmberModernDisplayStd-Bold; font-size: 24px; color: rgba(255, 255, 255, 0.3); text-align: right; direction: ltr; padding: 6px 12px; border-radius: 12px;';
   const ACTIVE = 'font-family: EmberModernDisplayStd-Bold; font-size: 24px; color: rgb(255, 255, 255); text-align: right; direction: ltr; padding: 6px 12px; border-radius: 12px; background-color: rgb(26, 111, 209);';
@@ -117,13 +135,6 @@
   }
   function renderList(lines) {                      // like React mounting a new list
     if (params.get('view') === 'closed') { document.getElementById('scroller').replaceChildren(); return document.createElement('div'); }
-    if (params.get('lyricsview') === 'none' || (!lines.length && SONGS[current].nolyrics && params.get('view') === 'open')) {
-      const empty = document.createElement('div');
-      empty.setAttribute('dir', 'auto'); empty.className = 'css-1jxf684';
-      empty.textContent = 'Lyrics aren\u2019t available for this song';
-      document.getElementById('scroller').replaceChildren(empty);
-      return document.createElement('div');
-    }
     const list = document.createElement('div');
     list.className = 'css-175oi2r';
     list.setAttribute('style', 'padding-top: 191px; padding-bottom: 191px;');
@@ -131,27 +142,56 @@
     document.getElementById('scroller').replaceChildren(list);
     return list;
   }
+  // Mini-player metadata, like React re-rendering the same nodes. ?badge=on|off|late overrides the song's own lyrics badge
+  // (late: it appears ?badgeDelay= ms, default 1000, after the title); ?mini=0 removes the mini-player; ?hdbadge=1 adds
+  // another (non-lyrics) badge to the group.
+  const mini = document.getElementById('miniPlayer');
+  if (params.get('mini') === '0') mini.remove();
+  const q = (sel) => mini.querySelector(sel);
+  let badgeTimer = 0;
+  window.showBadge = (lyrics) => {                   // BadgeGroup (with the lyrics badge) or the empty placeholder
+    const title = q('[data-testid="MiniPlayer_Title"]');
+    if (!title) return;
+    const slot = title.nextElementSibling;
+    const hd = params.has('hdbadge');
+    let el;
+    if (lyrics || hd) {
+      el = document.createElement('div');
+      el.setAttribute('data-testid', 'Box,BadgeGroup'); el.className = 'css-175oi2r r-18u37iz';
+      const badge = (label, text) => { const b = document.createElement('div'); b.setAttribute('data-testid', 'Badge'); b.setAttribute('aria-label', label); b.className = 'css-175oi2r'; b.setAttribute('style', 'padding:0 4px;border:1px solid #ffffff66;border-radius:3px;font-size:9px'); b.innerHTML = '<span class="css-1jxf684">' + text + '</span>'; return b; };
+      if (hd) el.append(badge('HD', 'HD'));
+      if (lyrics) el.append(badge('Lyrics available', 'LYRICS'));
+    } else {
+      el = document.createElement('div'); el.className = 'css-175oi2r';
+    }
+    slot.replaceWith(el);
+  };
   function setMeta(s) {
     const title = params.get('title') || s.title;    // ?title= gives the same lines a different song identity (cache tests)
     s = { ...s, artist: params.get('artist') || s.artist };  // ?artist= (real-API smoke test only)
     document.querySelector('[data-testid="WidgetHeader_Primary_Related_playlists"]').textContent = title;
     document.querySelector('.r-artist').textContent = s.artist;
-    document.getElementById('barTitle').textContent = title;
-    document.getElementById('barArtist').textContent = s.artist;
     if (!params.has('nomedia') && 'mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title, artist: s.artist });
-    // Lyrics button: ?lyricsbtn=enabled|disabled|missing overrides the song's own state.
-    const btnState = params.get('lyricsbtn') || (s.nolyrics ? 'disabled' : 'enabled');
-    const btn = document.getElementById('lyricsBtn');
-    btn.style.display = btnState === 'missing' ? 'none' : '';
-    if (btnState === 'missing') btn.removeAttribute('aria-label'); else btn.setAttribute('aria-label', 'Lyrics');
-    if (btnState === 'disabled') btn.setAttribute('aria-disabled', 'true'); else btn.removeAttribute('aria-disabled');
-    if (btnState === 'missing') btn.removeAttribute('role'); else btn.setAttribute('role', 'button');
+    const t = q('[data-testid="MiniPlayer_Title"]');
+    if (t) {
+      t.setAttribute('aria-label', title);
+      t.setAttribute('href', '/tracks/' + (params.get('asin') || 'B0MOCK' + String(current).padStart(4, '0')) + '?do=play');
+      t.firstChild.textContent = title;
+      const a = q('a[href^="/artists/"]');
+      a.setAttribute('aria-label', s.artist);
+      a.firstChild.textContent = s.artist;
+      clearTimeout(badgeTimer);
+      const mode = params.get('badge') || (s.nolyrics || !s.lines.length ? 'off' : 'on');
+      showBadge(mode === 'on');
+      if (mode === 'late') badgeTimer = setTimeout(() => showBadge(true), Number(params.get('badgeDelay')) || 1000);
+    }
     player.load(Number(params.get('dur')) || s.dur || 215);
   }
-  // Fake player clock: elapsed/duration texts (m:ss) and an integer-second slider, updated 4x per second.
-  // ?bar=text → no slider; ?bar=remaining → elapsed + "-m:ss" remaining, no slider; ?bar=slider → slider only (valuetext).
-  const barMode = params.get('bar') || 'both';
-  const fmt = (x) => Math.floor(x / 60) + ':' + String(Math.floor(x % 60)).padStart(2, '0');
+  // Fake player clock: the slider's aria-label "Playback {elapsed} of {duration}" (m:ss, h:mm:ss from 1 h), plus
+  // aria-valuenow/valuemax in seconds (?slider=values, default), in ms (?slider=ms) or not at all (?slider=label).
+  const sliderMode = params.get('slider') || 'values';
+  const fmt = (x) => { x = Math.floor(x); const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), ss = String(x % 60).padStart(2, '0'); return h ? h + ':' + String(m).padStart(2, '0') + ':' + ss : m + ':' + ss; };
+  window.mockFmt = fmt;
   const player = window.mockPlayer = {
     pos: 0, dur: 0, playing: true, t0: performance.now(),
     now() { return this.playing ? Math.min(this.dur, this.pos + (performance.now() - this.t0) / 1000) : this.pos; },
@@ -160,19 +200,15 @@
     pause() { this.pos = this.now(); this.playing = false; this.render(); },
     play() { this.t0 = performance.now(); this.playing = true; this.render(); },
     render() {
+      const sl = q('[role="slider"]');
+      if (!sl) return;
       const x = this.now();
-      const el = document.getElementById('elapsed'), du = document.getElementById('duration'), sl = document.getElementById('progress');
-      const set = (n, v) => { if (n.textContent !== v) n.textContent = v; };
-      set(el, fmt(x));
-      set(du, barMode === 'remaining' ? '-' + fmt(Math.max(0, this.dur - Math.floor(x))) : fmt(this.dur));
-      el.style.display = barMode === 'slider' ? 'none' : '';
-      du.style.display = barMode === 'slider' ? 'none' : '';
-      if (barMode === 'text' || barMode === 'remaining') sl.removeAttribute('role'); else sl.setAttribute('role', 'slider');
-      if (sl.getAttribute('aria-valuenow') !== String(Math.floor(x))) sl.setAttribute('aria-valuenow', String(Math.floor(x)));
-      sl.setAttribute('aria-valuemax', String(this.dur));
-      if (barMode === 'slider') sl.setAttribute('aria-valuetext', fmt(x) + ' of ' + fmt(this.dur)); else sl.removeAttribute('aria-valuetext');
-      document.getElementById('progressFill').style.width = (this.dur ? (x / this.dur) * 100 : 0) + '%';
-      const pb = document.getElementById('playBtn');
+      const set = (a, v) => { if (sl.getAttribute(a) !== v) sl.setAttribute(a, v); };
+      set('aria-label', 'Playback ' + fmt(x) + ' of ' + fmt(this.dur));
+      if (sliderMode === 'label') { sl.removeAttribute('aria-valuenow'); sl.removeAttribute('aria-valuemax'); }
+      else { const k = sliderMode === 'ms' ? 1000 : 1; set('aria-valuenow', String(Math.floor(x) * k)); set('aria-valuemax', String(this.dur * k)); }
+      sl.firstChild.style.width = (this.dur ? (x / this.dur) * 100 : 0) + '%';
+      const pb = q('[data-testid="IconButton,MiniPlayer_Pause"]');
       if (pb.getAttribute('aria-label') !== (this.playing ? 'Pause' : 'Play')) pb.setAttribute('aria-label', this.playing ? 'Pause' : 'Play');
     },
   };
