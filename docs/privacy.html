@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy: Lyrics Translate &amp; Romanize for Amazon Music</title>
+<meta name="description" content="Privacy policy for the Lyrics Translate & Romanize for Amazon Music Microsoft Edge extension. The developer collects no data.">
+<link rel="icon" href="img/icon.png">
+<link rel="stylesheet" href="style.css">
+<style>table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; } th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; color: #cdd6da; } th { background: var(--panel2); color: var(--text); }</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="img/icon.png" alt="">Lyrics Translate</a>
+    <nav><a href="./">Home</a><a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music">GitHub</a></nav>
+  </div>
+</header>
+<main class="doc">
+  <h1>Privacy Policy</h1>
+  <p class="note">Lyrics Translate &amp; Romanize for Amazon Music · Effective date: September 27, 2026</p>
+  <p>This policy covers the Microsoft Edge extension "Lyrics Translate &amp; Romanize for Amazon Music" (the "extension"), published by NoodlesNom. The extension is not affiliated with Amazon.</p>
+
+  <h2>Summary</h2>
+  <ul>
+    <li><b>The developer collects no data.</b> There are no analytics, no trackers, no advertising, no accounts and no servers run by the developer. Nothing is ever sent to the developer.</li>
+    <li><b>Lyric lines are sent to Google only to translate or romanize them.</b> The lyric lines shown on screen in the Amazon Music web player go to Google Translate, and to Google Gemini if you added your own API key.</li>
+    <li><b>Everything else stays in your browser.</b> Your Gemini key and the translation cache are kept in the extension's local storage, and your settings in the extension's sync storage. Removing the extension clears them.</li>
+  </ul>
+
+  <h2>What the extension reads</h2>
+  <p>The extension runs only on <code>https://music.amazon.com/*</code>. There it reads:</p>
+  <ul>
+    <li>the text of the lyric lines shown in the lyrics view, and</li>
+    <li>the current song's title and artist (from the browser's media-session information or the Now Playing heading), used only as a local cache key so a song isn't translated twice.</li>
+  </ul>
+  <p>It does not read cookies, your account, your listening history, or any other site.</p>
+
+  <h2>What is sent, to whom, and why</h2>
+  <table>
+    <tr><th>Recipient</th><th>What is sent</th><th>When</th><th>Why</th></tr>
+    <tr><td>Google Translate (<code>clients5.google.com</code>, fallback <code>translate.googleapis.com</code>)</td><td>The lyric lines on screen and the target language code</td><td>When a song's lyrics are shown and aren't in the cache yet</td><td>To translate the lines, detect their language and romanize non-Latin lines</td></tr>
+    <tr><td>Google Gemini API (<code>generativelanguage.googleapis.com</code>)</td><td>The song's lyric lines, the target language, and <b>your own</b> API key (in a request header)</td><td>Only if you saved a Gemini key and Gemini is selected, and the song isn't already in your target language</td><td>To translate the lines</td></tr>
+  </table>
+  <p>Requests are made without cookies. No song titles, artist names, history, identifiers or other personal data are sent. Google processes these requests under its own terms and privacy policy (<a href="https://policies.google.com/privacy">Google Privacy Policy</a>, <a href="https://ai.google.dev/gemini-api/terms">Gemini API Additional Terms</a>). On Gemini's free tier, Google may use submitted content to improve its products.</p>
+
+  <h2>What is stored, and where</h2>
+  <p>All storage is the browser's own extension storage (<code>chrome.storage</code>). The developer can't access it.</p>
+  <ul>
+    <li><b>Gemini API key</b>: <code>chrome.storage.local</code> only (this browser, never synced). You can remove it any time with <b>Remove key</b> on the Settings page.</li>
+    <li><b>Translation cache</b>: <code>chrome.storage.local</code>. For up to 2000 songs it keeps the song title and artist (as the cache key), the lyric lines, their translations and romanizations, and the time last played. The least recently played songs are removed first when the cache is full.</li>
+    <li><b>Gemini status</b> (the last Gemini result, such as "ok" or "quota", and its time): <code>chrome.storage.local</code>.</li>
+    <li><b>Settings</b> (target language, translator, text size and the on/off toggles): <code>chrome.storage.sync</code>, so Microsoft Edge may sync them between your own signed-in browsers. Your key is never put in sync storage.</li>
+  </ul>
+  <p><b>Removing the extension deletes all of this data.</b></p>
+
+  <h2>Children</h2>
+  <p>The extension isn't directed at children and collects no personal information from anyone.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, the updated version will be published at this address with a new effective date.</p>
+
+  <h2>Contact</h2>
+  <p>Questions or requests: open an issue at <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/issues">github.com/NoodlesNom/lyrics-translate-for-amazon-music/issues</a>.</p>
+</main>
+<footer><div class="wrap"><p>Not affiliated with Amazon. Amazon Music is a trademark of Amazon.com, Inc. or its affiliates. · <a href="./">Home</a></p></div></footer>
+</body>
+</html>

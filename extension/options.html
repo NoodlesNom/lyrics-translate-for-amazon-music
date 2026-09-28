@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Lyrics Translate settings</title>
+<style>
+  body { margin: 0; padding: 32px; background: #0f1111; color: #fff; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 560px; }
+  h1 { font-size: 18px; margin: 0 0 16px; }
+  input { width: 100%; box-sizing: border-box; background: #1c1f20; color: #fff; border: 1px solid #3a3f41; border-radius: 6px; padding: 8px; font: inherit; }
+  button { margin: 10px 8px 0 0; background: #1c1f20; color: #fff; border: 1px solid #3a3f41; border-radius: 6px; padding: 6px 14px; font: inherit; cursor: pointer; }
+  button.primary { background: #25d1da; color: #0f1111; border-color: #25d1da; }
+  .muted { color: rgba(255,255,255,.55); font-size: 12px; }
+  #result.ok { color: #6be38e; } #result.err { color: #ff8a80; }
+  a { color: #25d1da; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lyrics Translate: Gemini translation</h1>
+  <p class="muted">Optional. With your own free Gemini API key, lyrics are translated by Google's Gemini model, using the whole song as context.
+    Romanization still comes from Google Translate, and Google Translate is used automatically if Gemini fails.
+    Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>.
+    The key is stored only in this browser (not synced). When Gemini is on, lyric text is sent to Google's Gemini API.</p>
+  <label for="key">Gemini API key</label>
+  <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Gemini API key">
+  <p id="saved" class="muted"></p>
+  <button id="save" class="primary">Save</button><button id="test">Test key</button><button id="remove">Remove key</button>
+  <p id="result"></p>
+</main>
+<script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lyrics Translate &amp; Romanize for Amazon Music: Microsoft Edge extension</title>
+<meta name="description" content="A free Microsoft Edge extension that translates the lyrics in the Amazon Music web player and adds romanization for non-Latin scripts. Not affiliated with Amazon.">
+<link rel="icon" href="img/icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="img/icon.png" alt="">Lyrics Translate</a>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#popup" class="hide-s">Popup</a>
+      <a href="#privacy" class="hide-s">Privacy</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <h1>Understand every song on<br><span>Amazon Music</span> in your language</h1>
+    <p class="lead">Lyrics Translate &amp; Romanize for Amazon Music is a free Microsoft Edge extension. It translates the lyrics in the Amazon Music web player (music.amazon.com) as they scroll, and adds an easy-to-read romanization under lines written in Japanese, Korean, Chinese, Cyrillic, Arabic, Hindi, Thai, Greek, Hebrew and other non-Latin scripts.</p>
+    <div class="buttons">
+      <!-- STORE LINK PLACEHOLDER: replace href and text once the Microsoft Edge Add-ons listing is live -->
+      <a class="btn primary" href="#install" aria-disabled="true">Microsoft Edge Add-ons: coming soon</a>
+      <a class="btn" href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest">Download ZIP (load unpacked)</a>
+    </div>
+    <p class="note">Free and open source (MIT). No account, no analytics. Not affiliated with Amazon.</p>
+    <div class="shot"><img src="img/1-translated.png" width="1280" height="800" alt="The Amazon Music-style lyrics view on a demo page: each invented lyric line is shown as a large English translation with a small romanization underneath."></div>
+    <p class="note">All screenshots use a local demo page with invented lyric lines.</p>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Features</h2>
+    <p class="sub">Everything happens inside the lyrics view you already use. Open a song's lyrics in the Amazon Music web player and the extension does the rest.</p>
+    <div class="grid">
+      <div class="card"><div class="icon">G</div><h3>Gemini or Google Translate</h3>
+        <p>Use the free Google Translate web service with no key or account, or paste your own free Gemini API key for natural translations that use the whole song as context. The key is saved only in your browser.</p></div>
+      <div class="card"><div class="icon">⇄</div><h3>Automatic fallback</h3>
+        <p>If Gemini hits a quota, rejects the key, times out (20 s) or sends an unexpected reply, that song is translated with Google Translate instead, without interrupting you. Gemini is retried after a short pause.</p></div>
+      <div class="card"><div class="icon">Aa</div><h3>Romanization</h3>
+        <p>Non-Latin lines get a romanization in small text: romaji for Japanese, pinyin for Chinese, Revised Romanization for Korean, plus Cyrillic, Arabic, Hebrew, Devanagari, Thai, Greek and more. Latin-script lines never get one.</p></div>
+      <div class="card"><div class="icon">⤒</div><h3>Translation as the main line</h3>
+        <p>By default the translation replaces the original as the big, bold line, with the romanization underneath. Turn on <b>Original lyrics</b> ("Show original lyrics" in the popup) to keep the original big and show the extras in small text.</p></div>
+      <div class="card"><div class="icon">◉</div><h3>Floating button</h3>
+        <p>A small round button in the top-right corner of the player opens the popup as a panel right on the page. Click outside it or press <kbd>Esc</kbd> to close it, or hide the button in the popup.</p></div>
+      <div class="card"><div class="icon">⟳</div><h3>Per-song cache</h3>
+        <p>Results are saved per song, translator and language: up to 2000 songs (400 lines each). Replays are instant and make no requests. When the cache is full, the least recently played songs are removed first.</p></div>
+      <div class="card"><div class="icon">✓</div><h3>Skips songs already in your language</h3>
+        <p>Lines already in your target language stay as they are. A Latin-script song is language-checked with Google first, so an English song with English selected never uses your Gemini quota, now or on replays.</p></div>
+      <div class="card"><div class="icon">↻</div><h3>"Translate this song"</h3>
+        <p>If a mixed-language song was left partly untranslated, one click translates the whole song again with the selected translator and remembers not to skip it next time.</p></div>
+      <div class="card"><div class="icon">A+</div><h3>Text size</h3>
+        <p>Scale all the lyric text the extension shows from 85% to 145% (Small, Default, Large, Extra large) without zooming the rest of the player, so auto-scrolling keeps working.</p></div>
+    </div>
+
+    <div class="split">
+      <div class="media"><img src="img/2-romanization.png" width="1280" height="800" alt="Invented Japanese lyric lines shown with romaji underneath and an English translation, at the Large text size."></div>
+      <div><h3>Read along in any script</h3>
+        <p>Can't read the script? Follow the romanization line as the song plays. Here three invented Japanese lines keep the original as the main line, with romaji and the English translation underneath, at the <b>Large</b> text size.</p></div>
+    </div>
+    <div class="split rev">
+      <div class="media"><img src="img/5-original-toggle.png" width="1280" height="800" alt="Invented Chinese, Greek, Hebrew and Thai lines with the original shown as the main line and romanization plus translation underneath."></div>
+      <div><h3>Original lyrics, when you want them</h3>
+        <p>With <b>Original lyrics</b> on, the original stays the big line. Songs that mix scripts are handled line by line: each line gets its own romanization and translation, and lines already in your language are left alone.</p></div>
+    </div>
+    <div class="split">
+      <div class="media"><img src="img/4-floating-panel.png" width="1280" height="800" alt="The floating button in the top-right corner has opened the settings panel on the page, next to translated demo lyrics."></div>
+      <div><h3>Settings without leaving the player</h3>
+        <p>The floating button opens the full popup as an in-page panel, handy in full-screen or when the toolbar is hidden. It's the same popup, with the same live status lines.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="popup">
+  <div class="wrap">
+    <h2>The popup</h2>
+    <p class="sub">Click the toolbar icon (or the floating button). Changes apply immediately to the open lyrics.</p>
+    <div class="popup-wrap">
+      <div class="popup-img"><img src="img/popup.png" width="604" height="1000" alt="The extension popup: target language, translator, Gemini status, this song's status, Translate this song button, text size, toggles and the saved-songs counter."></div>
+      <dl class="controls">
+        <dt>Translate to</dt><dd>Target language: 23 languages, including English, Spanish, French, German, Japanese, Korean, Chinese (Simplified and Traditional), Arabic, Hindi and more.</dd>
+        <dt>Translator</dt><dd><b>Gemini (needs key)</b> or <b>Google Translate</b>. Gemini is picked automatically once you save a key.</dd>
+        <dt>Gemini status dot</dt><dd><span class="dot g"></span>Gemini working, last reply 2 min ago · <span class="dot a"></span>Using Google (quota hit, timed out, error or unexpected reply) · <span class="dot r"></span>Invalid key · <span class="dot n"></span>No key, not used yet, or Google selected.</dd>
+        <dt>This song</dt><dd>The current song's detected language(s) and state, for example "Japanese + English · Translated with Gemini (from cache)", "English · Already in English, no translation needed" or "Translating…".</dd>
+        <dt>Translate this song</dt><dd>Translates the open song again with the selected translator and stops it being skipped.</dd>
+        <dt>Text size</dt><dd>Small (85%), Default, Large (120%) or Extra large (145%).</dd>
+        <dt>Toggles</dt><dd>Show romanization, Show translation, Show original lyrics, Show floating button.</dd>
+        <dt>Saved songs</dt><dd>For example "Saved songs: 12 (Gemini 8 · Google 6) · ~0.3 MB": how many songs are cached, how many are fully translated by each translator, and roughly how much storage is used.</dd>
+        <dt>Settings</dt><dd>Opens the settings page, where you save, test or remove your Gemini key.</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section id="gemini">
+  <div class="wrap">
+    <h2>Optional: use Gemini with your own free key</h2>
+    <ol class="steps">
+      <li>Get a free API key at <a href="https://aistudio.google.com/apikey">Google AI Studio</a>.</li>
+      <li>Click the extension icon, then <b>Settings</b>. Paste the key, click <b>Save</b>, then <b>Test key</b>.</li>
+      <li>In the popup, <b>Translator</b> switches to <b>Gemini (needs key)</b>. Romanization still comes from Google Translate.</li>
+    </ol>
+    <p class="note">Free-tier rate limits and daily quotas apply, and on the free tier Google may use the content sent to improve its products. The key is stored only in this browser (not synced) and sent only to Google's Gemini API, in a request header.</p>
+  </div>
+</section>
+
+<section id="privacy">
+  <div class="wrap">
+    <h2>Privacy</h2>
+    <div class="grid">
+      <div class="card"><h3>No data collection</h3><p>The developer collects nothing. There are no analytics, no trackers, no accounts and no servers of our own.</p></div>
+      <div class="card"><h3>What is sent, and where</h3><p>Only the lyric lines on screen are sent to Google Translate, and to Google Gemini if you added your own key, only to translate or romanize them. No cookies, song history or other data.</p></div>
+      <div class="card"><h3>Stored in your browser</h3><p>Your Gemini key and the translation cache stay in local extension storage; your settings are in sync storage. Removing the extension clears them.</p></div>
+    </div>
+    <p style="margin-top:20px"><a href="privacy.html">Read the full privacy policy</a></p>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Install</h2>
+    <div class="grid">
+      <div class="card"><h3>From Microsoft Edge Add-ons</h3>
+        <!-- STORE LINK PLACEHOLDER -->
+        <p>The store listing is on its way. Once it's live, the link will appear here: <b>Microsoft Edge Add-ons: coming soon</b>.</p></div>
+      <div class="card"><h3>Load unpacked (now)</h3>
+        <ol class="steps">
+          <li>Download the ZIP from the <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest">latest release</a> and unzip it (or clone the repo and use its <code>extension</code> folder).</li>
+          <li>Open <code>edge://extensions</code>.</li>
+          <li>Turn on <b>Developer mode</b>.</li>
+          <li>Click <b>Load unpacked</b> and pick the folder that contains <code>manifest.json</code>.</li>
+          <li>Open <a href="https://music.amazon.com">music.amazon.com</a>, play a song and open the lyrics view.</li>
+        </ol></div>
+    </div>
+    <p class="note" style="margin-top:18px">Works on music.amazon.com (not regional domains such as .co.jp or .de). The Google Translate web endpoint is unofficial and rate-limited; if it refuses requests, lines stay as they are and the extension retries about a minute later.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="disclaimer"><b>Not affiliated with Amazon.</b> This is an independent, unofficial extension. It is not made, endorsed or supported by Amazon. Amazon Music is a trademark of Amazon.com, Inc. or its affiliates. Google Translate and Gemini are trademarks of Google LLC.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Lyrics Translate &amp; Romanize for Amazon Music · MIT License · © NoodlesNom</p>
+    <p><a href="privacy.html">Privacy policy</a> · <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music">Source code</a> · <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/issues">Support and feedback (GitHub issues)</a></p>
+  </div>
+</footer>
+</body>
+</html>

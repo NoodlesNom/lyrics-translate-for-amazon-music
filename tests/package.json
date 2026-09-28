@@ -1,0 +1,14 @@
+{
+  "name": "lyrics-translate-tests",
+  "version": "1.0.0",
+  "description": "Playwright tests for the extension against a local mock page (invented lyric lines only)",
+  "scripts": {
+    "test": "node test.js && node test-gemini.js && node test-extra.js"
+  },
+  "author": "NoodlesNom",
+  "license": "MIT",
+  "dependencies": {
+    "playwright": "^1.63.0"
+  },
+  "private": true
+}

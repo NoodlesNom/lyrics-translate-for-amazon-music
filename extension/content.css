@@ -1,0 +1,46 @@
+/* Amazon Music Lyrics Translate: styles for the extension's own nodes (.amlt*), plus lyric text size.
+   One multiplier, --amlt-scale (popup "Text size", set on <html> by content.js), drives every size below:
+   main line 28px (the original, or the translation when it replaces it), romanization/secondary lines 18px.
+   Every processed lyric line holds an .amlt block (empty and hidden if there's nothing to add). */
+:where(:has(> .amlt)) { font-size: calc(28px * var(--amlt-scale, 1)) !important; line-height: 1.3 !important; }
+.amlt {
+  display: block !important;
+  margin: 4px 0 2px;
+  font-family: EmberModernTextStd-Regular, "Amazon Ember", system-ui, sans-serif;
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  pointer-events: none;
+}
+.amlt-rom, .amlt-trans { font-size: calc(18px * var(--amlt-scale, 1)); }
+.amlt-rom { font-style: normal; opacity: 0.8; }
+.amlt .amlt-off, .amlt:empty { display: none !important; }
+
+/* Floating button + settings panel (below Amazon's top bar, right edge). */
+.amlt-float {
+  position: fixed; top: 84px; right: 20px; z-index: 2147483000;
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 50%;
+  background: rgba(20, 22, 23, 0.75); opacity: 0.55; cursor: pointer; transition: opacity 0.15s;
+}
+.amlt-float:hover, .amlt-float:focus-visible { opacity: 1; }
+.amlt-float img { width: 18px; height: 18px; pointer-events: none; }
+.amlt-panel {
+  position: fixed; top: 124px; right: 20px; z-index: 2147483001;
+  width: 302px; height: 500px; max-height: calc(100vh - 140px);
+  border: 1px solid #3a3f41; border-radius: 10px; background: #0f1111; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* "Show original lyrics" OFF: on lines whose translation is visible, the translation becomes the main line.
+   The lyric h4 keeps its text node and inline style; font-size 0 just hides the original text visually
+   (Amazon's inline font-size is not !important, so this wins). */
+:has(> .amlt.amlt-main > .amlt-trans:not(.amlt-off)) { font-size: 0 !important; line-height: 0 !important; }
+.amlt.amlt-main:has(> .amlt-trans:not(.amlt-off)) { display: flex !important; flex-direction: column; margin: 0; font-family: inherit; }
+.amlt.amlt-main:has(> .amlt-trans:not(.amlt-off)) > .amlt-trans { order: -1; font-size: calc(28px * var(--amlt-scale, 1)); font-weight: 700; line-height: 1.3; }
+.amlt.amlt-main:has(> .amlt-trans:not(.amlt-off)) > .amlt-rom {
+  margin-top: 2px;
+  font-family: EmberModernTextStd-Regular, "Amazon Ember", system-ui, sans-serif;
+  font-weight: 400;
+}

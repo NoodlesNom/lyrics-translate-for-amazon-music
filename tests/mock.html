@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Amazon Music (local mock, React Native Web structure)</title>
+<!-- Mirrors the structure observed on the live player (Now Playing > Lyrics). Classes are fake RNW-style
+     generated names on purpose; the extension must not depend on them. All lyric lines are invented test text. -->
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #fff; font-family: "Amazon Ember", system-ui, sans-serif; }
+  .css-175oi2r { display: flex; flex-direction: column; flex-basis: auto; flex-shrink: 0; box-sizing: border-box; position: relative; min-width: 0; min-height: 0; } /* RNW View defaults */
+  @font-face { font-family: EmberModernDisplayStd-Bold; src: local("Noto Sans Bold"), local("NotoSans-Bold"), local("DejaVu Sans Bold"); } /* stand-in for Amazon's font */
+  .css-1jxf684 { display: inline; margin: 0; padding: 0; white-space: pre-wrap; overflow-wrap: break-word; font: inherit; }
+  .r-18u37iz { flex-direction: row; } .r-1awozwy { align-items: center; } .r-13awgt0 { flex: 1; }
+  .r-150rngu { overflow-y: auto; } .r-1rnoaur { scrollbar-width: none; }
+</style>
+</head>
+<body>
+<div id="root" class="css-175oi2r r-13awgt0" style="height:100%">
+  <!-- page behind the overlay; decoy headings that must NOT be annotated -->
+  <div class="css-175oi2r r-1d2f490" style="padding:24px">
+    <div class="css-175oi2r r-18u37iz">
+      <div class="css-175oi2r" style="width:160px"><h4 dir="auto" aria-hidden="true" aria-level="4" role="heading" tabindex="-1" class="css-1jxf684 r-1w6e6rj">見出しのデコイ一</h4></div>
+      <div class="css-175oi2r" style="width:160px"><h4 dir="auto" aria-hidden="true" aria-level="4" role="heading" tabindex="-1" class="css-1jxf684 r-1w6e6rj">見出しのデコイ二</h4></div>
+      <div class="css-175oi2r" style="width:160px"><h4 dir="auto" aria-hidden="true" aria-level="4" role="heading" tabindex="-1" class="css-1jxf684 r-1w6e6rj">見出しのデコイ三</h4></div>
+    </div>
+  </div>
+  <section role="region" tabindex="-1" class="css-175oi2r r-1p0dtai r-1d2f490" style="position:absolute;inset:0;z-index:2;background:radial-gradient(circle at 20% 10%,#13324a 0,#0a0f1a 55%,#000 100%)">
+    <!-- Amazon-style top-right controls (collapse / queue / profile) that the floating button must not cover -->
+    <div id="topControls" class="css-175oi2r r-18u37iz" style="position:absolute;top:16px;right:24px;gap:12px;z-index:3">
+      <div role="button" aria-label="Collapse" style="width:40px;height:40px;border-radius:20px;background:#ffffff22"></div>
+      <div role="button" aria-label="Queue" style="width:40px;height:40px;border-radius:20px;background:#ffffff22"></div>
+      <div role="button" aria-label="Profile" style="width:40px;height:40px;border-radius:20px;background:#25d1da66"></div>
+    </div>
+    <div class="css-175oi2r r-13awgt0"><div class="css-175oi2r r-13awgt0 r-18u37iz">
+      <div class="css-175oi2r" style="padding:24px;width:320px">
+        <div class="css-175oi2r" style="width:272px;height:272px;border-radius:8px;background:linear-gradient(135deg,#25d1da55,#1a6fd155)"></div>
+        <h4 dir="auto" role="heading" aria-level="4" tabindex="0" data-testid="WidgetHeader_Primary_Related_playlists" class="css-1jxf684 r-b88u0q" style="font-family:EmberModernDisplayStd-Bold;font-size:20px;margin-top:16px;color:#fff"></h4>
+        <div dir="auto" class="css-1jxf684 r-artist" style="color:rgba(255,255,255,0.6);margin-top:4px"></div>
+      </div>
+      <div class="css-175oi2r r-13awgt0" style="padding:24px">
+        <div class="css-175oi2r r-13awgt0" id="overlays">
+          <div aria-hidden="true" class="css-175oi2r"><h4 dir="auto" aria-hidden="true" aria-level="4" role="heading" tabindex="-1" class="css-1jxf684" style="font-size:12px;color:rgba(255,255,255,0.3)">オーバーレイのデコイ</h4></div>
+          <div aria-hidden="true" tabindex="-1" class="css-175oi2r r-13awgt0 r-150rngu r-1rnoaur" id="scroller" style="height:calc(100vh - 150px)"></div>
+        </div>
+      </div>
+    </div></div>
+  </section>
+  <div class="css-175oi2r r-18u37iz r-1awozwy" style="position:fixed;left:0;right:0;bottom:0;height:64px;z-index:3;background:#111;padding:0 24px;gap:16px">
+    <a id="barTitle" dir="auto" class="css-1jxf684 r-link" href="#" style="color:#fff;text-decoration:none"></a>
+    <a id="barArtist" dir="auto" class="css-1jxf684 r-link" href="#" style="color:rgba(255,255,255,.6);text-decoration:none"></a>
+    <div id="clock" dir="auto" class="css-1jxf684" style="color:rgba(255,255,255,.4);font-size:12px">0:00</div>
+  </div>
+</div>
+<script>
+  const params = new URLSearchParams(location.search);
+  if (!params.has('notestid')) document.getElementById('overlays').setAttribute('data-testid', 'Stage_OverlaysContainer');
+  document.getElementById('overlays').removeAttribute('id');
+  const SONGS = {
+    0: { title: 'No Lyrics (Test)', artist: 'Mock Artist', lines: [] },
+    1: { title: 'Paper Lantern (Test)', artist: 'Mock Artist', lines: [
+      '夜の窓に小さな星が光る', '青い傘を持って歩いた',
+      '밤하늘에 작은 별이 빛나요', '우리는 바다까지 걸었어',
+      'Тихий снег ложится на крыши', 'Мы идём домой по старой дороге',
+      'القمر يضيء فوق البحر', 'نمشي معا في الصباح',
+      'आसमान में नीले बादल हैं', 'हम साथ में गीत गाते हैं',
+      'The city lights are humming low', 'I keep a paper boat for you', '♪'] },
+    2: { title: 'River Moon (Test)', artist: 'Another Mock', lines: [
+      '月光落在安静的小河上', '我们一起等待春天',
+      'Ο ήλιος λάμπει στη θάλασσα', 'Περπατάμε μαζί στο δρόμο',
+      'הרוח נושבת בין העצים', 'אנחנו הולכים הביתה',
+      'ฝนตกเบาๆ ที่หน้าต่าง', 'เราเดินไปด้วยกัน'] },
+    3: { title: 'Offline Song (Test)', artist: 'Mock Failure', lines: ['雪の朝に鳥が歌う', '古い橋をゆっくり渡る', '窓の外はとても静か'] },
+    4: { title: 'Live Check (Test)', artist: 'Mock Live', lines: ['静かな町に朝が来た', '小さな犬が公園を走る', '空に白い雲が浮かぶ'] },
+    5: { title: 'Paper Planes (Test)', artist: 'English Mock', lines: ['We fold the paper planes at dawn', 'The kettle hums a sleepy tune', 'Our shadows lean against the door', 'Tomorrow waits beyond the hill'] },
+    6: { title: 'Mar Azul (Test)', artist: 'Mock Español', lines: ['Las olas cantan en la arena', 'Mi barco duerme junto al muelle', 'La luna pinta el agua de plata'] },
+    8: { title: 'Mixed Tide (Test)', artist: 'Mock Español', lines: ['We fold the paper planes at dawn', 'Las olas cantan en la arena', 'The kettle hums a sleepy tune', 'Mi barco duerme junto al muelle'] },
+    7: { title: 'Mixed Lantern (Test)', artist: 'Mock Artist', lines: ['夜の窓に小さな星が光る', '青い傘を持って歩いた', 'The city lights are humming low', 'I keep a paper boat for you'] },
+  };
+  const H4_STYLE = 'font-family: EmberModernDisplayStd-Bold; font-size: 24px; color: rgba(255, 255, 255, 0.3); text-align: right; direction: ltr; padding: 6px 12px; border-radius: 12px;';
+  const ACTIVE = 'font-family: EmberModernDisplayStd-Bold; font-size: 24px; color: rgb(255, 255, 255); text-align: right; direction: ltr; padding: 6px 12px; border-radius: 12px; background-color: rgb(26, 111, 209);';
+  let current = 0;
+  function makeRow(t) {
+    const row = document.createElement('div');
+    row.className = 'css-175oi2r r-18u37iz';
+    row.setAttribute('style', 'margin-bottom: 8px;');
+    const h4 = document.createElement('h4');
+    for (const [k, v] of Object.entries({ dir: 'auto', 'aria-hidden': 'true', 'aria-level': '4', role: 'heading', tabindex: '-1', class: 'css-1jxf684 r-13awgt0 r-1qd0xha', style: H4_STYLE })) h4.setAttribute(k, v);
+    h4.textContent = t;                                // direct text node, no span
+    const spacer = document.createElement('div');
+    spacer.setAttribute('aria-hidden', 'true');
+    spacer.className = 'css-175oi2r';
+    spacer.setAttribute('style', 'width: 36px; height: 36px;');
+    row.append(h4, spacer);
+    return row;
+  }
+  function renderList(lines) {                      // like React mounting a new list
+    const list = document.createElement('div');
+    list.className = 'css-175oi2r';
+    list.setAttribute('style', 'padding-top: 191px; padding-bottom: 191px;');
+    list.append(...lines.map(makeRow));
+    document.getElementById('scroller').replaceChildren(list);
+    return list;
+  }
+  function setMeta(s) {
+    const title = params.get('title') || s.title;    // ?title= gives the same lines a different song identity (cache tests)
+    document.querySelector('[data-testid="WidgetHeader_Primary_Related_playlists"]').textContent = title;
+    document.querySelector('.r-artist').textContent = s.artist;
+    document.getElementById('barTitle').textContent = title;
+    document.getElementById('barArtist').textContent = s.artist;
+    if (!params.has('nomedia') && 'mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title, artist: s.artist });
+  }
+  // Renders a song in chunks (3 lines, then one more every 150 ms), like a list that fills in progressively.
+  window.setSongChunked = (n) => {
+    const s = SONGS[n]; current = n; setMeta(s);
+    const list = renderList(s.lines.slice(0, 3));
+    s.lines.slice(3).forEach((t, i) => setTimeout(() => list.appendChild(makeRow(t)), 150 * (i + 1)));
+  };
+  window.setSong = (n) => { const s = SONGS[n]; current = n; setMeta(s); renderList(s.lines); };
+  const lineH4 = (i) => document.querySelectorAll('div[style*="padding-top: 191px"] > div > h4')[i];
+  window.resetText = (i, text) => { const h = lineH4(i); h.textContent = text ?? h.firstChild.nodeValue; }; // React setTextContent
+  window.setNodeValue = (i, text) => { lineH4(i).firstChild.nodeValue = text; };                         // React text-node update
+  let tick = 0, cur = 0;
+  setInterval(() => {                               // playback clock + moving active highlight (style attribute only)
+    document.getElementById('clock').textContent = `0:${String(++tick % 60).padStart(2, '0')}`;
+    document.querySelectorAll('div[style*="padding-top: 191px"] > div > h4').forEach((h, i, all) => h.setAttribute('style', i === cur % all.length ? ACTIVE : H4_STYLE));
+    cur++;
+  }, 500);
+  // Like a player that auto-scrolls: center line i using the rows' actual heights (sum of row boxes above it).
+  window.scrollToLine = (i) => {
+    const rows = [...document.querySelector('div[style*="padding-top: 191px"]').children], sc = document.getElementById('scroller') || document.querySelector('[tabindex="-1"].r-150rngu');
+    let y = 191;
+    for (let k = 0; k < i; k++) y += rows[k].offsetHeight + parseFloat(getComputedStyle(rows[k]).marginBottom);
+    sc.scrollTop = y - sc.clientHeight / 2 + rows[i].offsetHeight / 2;
+  };
+  window.amltInserts = 0;                           // counts annotation blocks added (loop detection)
+  new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => { if (n.classList && n.classList.contains('amlt')) window.amltInserts++; })))
+    .observe(document.body, { childList: true, subtree: true });
+  setSong(Number(params.get('song') || 1));
+</script>
+</body>
+</html>
