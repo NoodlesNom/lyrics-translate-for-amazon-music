@@ -4,6 +4,8 @@ A free Microsoft Edge extension (Manifest V3, plain JS/HTML/CSS) that translates
 
 > **Not affiliated with Amazon.** This is an independent, unofficial extension. It is not made, endorsed or supported by Amazon. Amazon Music is a trademark of Amazon.com, Inc. or its affiliates.
 
+**Get it on [Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/lyrics-translate-romanize-for-amazon-music/jjfhmmdjbkcamelimddcogoopaljflff)**
+
 **Website:** https://noodlesnom.github.io/lyrics-translate-for-amazon-music/ · **Privacy policy:** [PRIVACY.md](PRIVACY.md) ([web version](https://noodlesnom.github.io/lyrics-translate-for-amazon-music/privacy.html)) · **Support:** [GitHub issues](https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/issues)
 
 ![Translated lyrics on a demo page with invented lines](docs/img/1-translated.png)
@@ -20,7 +22,7 @@ A free Microsoft Edge extension (Manifest V3, plain JS/HTML/CSS) that translates
 
 ## Install
 
-- **Microsoft Edge Add-ons:** coming soon.
+- **Microsoft Edge Add-ons (recommended):** [install from the store](https://microsoftedge.microsoft.com/addons/detail/lyrics-translate-romanize-for-amazon-music/jjfhmmdjbkcamelimddcogoopaljflff).
 - **Load unpacked:** download the ZIP from the [latest release](https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest) (or clone this repo), open `edge://extensions`, turn on **Developer mode**, click **Load unpacked** and select the folder that contains `manifest.json` (the [`extension`](extension) folder in this repo).
 
 Full usage notes, the Gemini setup and known limits are in [extension/README.md](extension/README.md).
