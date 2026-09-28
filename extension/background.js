@@ -1,4 +1,5 @@
-// Background service worker: translation requests (Gemini with the user's key, or Google Translate) and the cache.
+// Background service worker: translation requests (Gemini with the user's key, or Google Translate), LRCLIB lyrics
+// lookups (only for songs Amazon has no lyrics for) and the cache.
 'use strict';
 
 // Google Translate web endpoints (same format; the second is tried if the first fails). Always used for romanization.
@@ -35,7 +36,8 @@ const simplify = (s) => s.toLowerCase().replace(/[\s\p{P}]+/gu, ' ').trim();
 const fetchT = (url, opts) => fetch(url, { ...opts, credentials: 'omit', signal: AbortSignal.timeout(LIMITS.timeoutMs) });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  const job = msg && msg.type === 'lyrics' ? handle(msg) : msg && msg.type === 'testKey' ? testKey(msg.key) : null;
+  const job = msg && msg.type === 'lyrics' ? handle(msg) : msg && msg.type === 'testKey' ? testKey(msg.key)
+    : msg && msg.type === 'lrclib' ? lrclib(msg) : null;
   if (!job) return;
   job.then(sendResponse, (e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
   return true;
@@ -272,5 +274,137 @@ async function persist(key, entry, changed) {
 async function evict(idx, n, keep) {
   const old = Object.keys(idx).filter((k) => k !== keep).sort((a, b) => idx[a] - idx[b]).slice(0, n);
   old.forEach((k) => delete idx[k]);
-  if (old.length) await chrome.storage.local.remove(old.map((k) => 'song:' + k));
+  if (old.length) await chrome.storage.local.remove(old.flatMap((k) => ['song:' + k, 'lrc:' + k]));
+}
+
+// ---------- LRCLIB: lyrics for songs Amazon has none for ----------
+// Only the song's title, artist and duration are sent (to lrclib.net, without cookies). LRCLIB asks clients to identify
+// themselves; browsers don't let extensions set User-Agent, so its documented alternative header Lrclib-Client is used.
+// Results share the song LRU: lrc:<key> = { id, dur, synced } | { id, dur, plain } (kept until evicted) | { none: 1, dur, until } (7 days).
+const LRCLIB = 'https://lrclib.net/api';
+const LRC_CLIENT = `Lyrics Translate & Romanize for Amazon Music v${chrome.runtime.getManifest().version} (https://github.com/NoodlesNom/lyrics-translate-for-amazon-music)`;
+const LRC_NONE_MS = 7 * 864e5, LRC_MAX_DIFF = 3;
+const lrcJobs = new Map();
+let lrcPauseUntil = 0; // after a 429: honor Retry-After
+
+async function lrclib({ key, title, artist, duration }) {
+  if (!key || !title || !artist || !(duration > 0)) return { status: 'error' };
+  const lk = 'lrc:' + key;
+  const { [lk]: hit } = await chrome.storage.local.get(lk);
+  // Same title/artist but another duration (e.g. a live version) is looked up again.
+  if (hit && (!hit.none || hit.until > Date.now()) && !(Math.abs((hit.dur || duration) - duration) > LRC_MAX_DIFF)) {
+    await touch(key);
+    return lrcView(hit);
+  }
+  if (lrcPauseUntil > Date.now()) return { status: 'error', retryMs: lrcPauseUntil - Date.now() };
+  if (!lrcJobs.has(key)) {
+    lrcJobs.set(key, lrcLookup(title, artist, duration).then(async (rec) => {
+      const dur = Math.round(duration);
+      const value = rec ? (rec.syncedLyrics ? { id: rec.id, dur, synced: rec.syncedLyrics } : { id: rec.id, dur, plain: rec.plainLyrics }) : { none: 1, dur, until: Date.now() + LRC_NONE_MS };
+      await storeLrc(key, value);
+      return lrcView(value);
+    }, (e) => ({ status: 'error', retryMs: e.retryMs || 0 })).finally(() => lrcJobs.delete(key)));
+  }
+  return lrcJobs.get(key);
+}
+
+function lrcView(v) {
+  if (v.none) return { status: 'none' };
+  if (v.synced) return { status: 'found', id: v.id, synced: parseLrc(v.synced), plain: null };
+  return { status: 'found', id: v.id, synced: null, plain: (v.plain || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean) };
+}
+
+// 1. /api/get with title, artist and duration (LRCLIB's own ±2 s match), checked again here.
+// 2. If that finds nothing, or only unsynced lyrics: /api/search (title + first artist); only close matches count:
+//    same normalized title and artist, duration within 3 s. Synced beats plain, then the closest duration.
+async function lrcLookup(title, artist, duration) {
+  let best = null;
+  const got = await lrcFetch('/get', { track_name: title, artist_name: artist, duration: Math.round(duration) });
+  if (lrcMatch(got, title, artist, duration)) best = got;
+  if (best && best.syncedLyrics) return best;
+  let list;
+  try {
+    list = await lrcFetch('/search', { track_name: title, artist_name: artists(artist)[0] || artist });
+  } catch (e) {
+    if (best) return best;
+    throw e;
+  }
+  const cands = (Array.isArray(list) ? list : []).filter((r) => lrcMatch(r, title, artist, duration));
+  cands.sort((a, b) => (!!b.syncedLyrics - !!a.syncedLyrics) || Math.abs(a.duration - duration) - Math.abs(b.duration - duration));
+  if (cands[0] && (cands[0].syncedLyrics || !best)) best = cands[0];
+  return best;
+}
+
+async function lrcFetch(path, params) {
+  let res;
+  try {
+    res = await fetchT(`${LRCLIB}${path}?${new URLSearchParams(params)}`, { headers: { 'Lrclib-Client': LRC_CLIENT } });
+  } catch (e) {
+    throw Object.assign(new Error('network'), { retryMs: 0 });
+  }
+  if (res.status === 404) return null;
+  if (res.status === 429) {
+    const ra = Number(res.headers.get('Retry-After'));
+    lrcPauseUntil = Date.now() + (ra > 0 ? ra * 1000 : 60000);
+    throw Object.assign(new Error('rate limited'), { retryMs: lrcPauseUntil - Date.now() });
+  }
+  if (!res.ok) throw Object.assign(new Error('HTTP ' + res.status), { retryMs: 0 });
+  return res.json();
+}
+
+// Matching helpers: lowercase, no accents, "&" = "and", punctuation ignored; "(feat. …)" dropped from titles.
+const fold = (s) => (s || '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/&/g, ' and ')
+  .replace(/['\u2019`\u00b4]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const FEAT = /\s*[([]\s*(?:feat|ft|featuring|with)\b[^)\]]*[)\]]|\s+(?:feat|ft|featuring)\.?\s.*$/i;
+const baseTitle = (t) => fold((t || '').replace(FEAT, '').replace(/\s+-\s+.*$/, '').replace(/\s*[([][^)\]]*[)\]]/g, ''));
+const artists = (s) => (s || '').split(/\s*(?:,|&|\/|;|\+|\u3001|\bx\b|\band\b|\bfeat\.?|\bft\.?|\bfeaturing\b|\bwith\b)\s*/i).map((a) => a.trim()).filter(Boolean);
+function lrcMatch(r, title, artist, duration) {
+  if (!r || r.instrumental || !(r.syncedLyrics || r.plainLyrics) || typeof r.duration !== 'number') return false;
+  if (Math.abs(r.duration - duration) > LRC_MAX_DIFF) return false;
+  const t1 = r.trackName || r.name || '';
+  const sameTitle = fold(t1.replace(FEAT, '')) === fold(title.replace(FEAT, '')) || (!!baseTitle(title) && baseTitle(t1) === baseTitle(title));
+  const a = artists(artist).map(fold), b = artists(r.artistName).map(fold);
+  const sameArtist = fold(r.artistName) === fold(artist) || (!!a[0] && b.includes(a[0])) || (!!b[0] && a.includes(b[0]));
+  return sameTitle && sameArtist;
+}
+
+// Synced LRC → [[seconds, text], ...] sorted by time. Handles several stamps per line, [offset:±ms] and word stamps.
+function parseLrc(text) {
+  let offset = 0;
+  const out = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const off = /^\s*\[offset:\s*([+-]?\d+)\s*\]/i.exec(raw);
+    if (off) { offset = Number(off[1]) / 1000; continue; }
+    const stamps = [];
+    let rest = raw, m;
+    while ((m = /^\s*\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/.exec(rest))) {
+      stamps.push(Number(m[1]) * 60 + parseFloat(m[2].replace(':', '.')));
+      rest = rest.slice(m[0].length);
+    }
+    const line = rest.replace(/<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/g, '').replace(/\s+/g, ' ').trim();
+    for (const t of stamps) out.push([Math.max(0, Math.round((t - offset) * 1000) / 1000), line]);
+  }
+  out.sort((x, y) => x[0] - y[0]);
+  while (out.length && !out[0][1]) out.shift(); // leading empty stamps
+  return out;
+}
+
+async function touch(key) {
+  const { idx = {} } = await chrome.storage.local.get('idx');
+  idx[key] = Date.now();
+  await chrome.storage.local.set({ idx });
+}
+
+async function storeLrc(key, value) {
+  const { idx = {} } = await chrome.storage.local.get('idx');
+  idx[key] = Date.now();
+  const over = Object.keys(idx).length - LIMITS.songs;
+  if (over > 0) await evict(idx, over, key);
+  const data = { ['lrc:' + key]: value, idx };
+  try {
+    await chrome.storage.local.set(data);
+  } catch (e) { // quota: drop the oldest 10% and retry once
+    await evict(idx, Math.max(1, Math.ceil(Object.keys(idx).length / 10)), key);
+    await chrome.storage.local.set(data).catch((e2) => console.warn('[lyrics-translate] LRCLIB cache write failed:', e2.message || e2));
+  }
 }

@@ -1,6 +1,6 @@
 'use strict';
-const DEFAULTS = { tl: 'en', rom: true, trans: true, orig: false, translator: '', size: 1, float: true };
-const TOGGLES = ['rom', 'trans', 'orig', 'float'];
+const DEFAULTS = { tl: 'en', rom: true, trans: true, orig: false, translator: '', size: 1, float: true, lrclib: true };
+const TOGGLES = ['rom', 'trans', 'orig', 'float', 'lrclib'];
 const FALLBACK = { quota: 'quota hit', timeout: 'timed out', error: 'error', mismatch: 'unexpected reply', badkey: 'rejected the key' };
 const $ = (id) => document.getElementById(id);
 
@@ -29,7 +29,8 @@ async function render() {
   const songs = Object.keys(all).filter((k) => k.startsWith('song:')).map((k) => Object.values(all[k].lines || {}));
   const full = (f) => songs.filter((ls) => ls.length && ls.every((c) => c[f] && tl in c[f])).length;
   const bytes = await chrome.storage.local.getBytesInUse(null);
-  $('counter').textContent = `Saved songs: ${Object.keys(all.idx || {}).length} (Gemini ${full('g')} · Google ${full('t')}) · ${size(bytes)}`;
+  const saved = Object.keys(all.idx || {}).filter((k) => !(all['lrc:' + k] && all['lrc:' + k].none && !all['song:' + k])).length; // LRCLIB "not found" markers aren't songs
+  $('counter').textContent = `Saved songs: ${saved} (Gemini ${full('g')} · Google ${full('t')}) · ${size(bytes)}`;
 }
 // "Translate this song" (selected translator, Google if Gemini can't): enabled only when the active tab shows Amazon Music lyrics.
 let tabId = null, busy = false;
@@ -39,8 +40,22 @@ async function findSong() {
   const song = tab && (await chrome.tabs.sendMessage(tab.id, { type: 'song' }).catch(() => null));
   tabId = song && song.key ? tab.id : null;
   $('force').disabled = busy || !tabId;
-  $('song').textContent = 'This song: ' + (tabId ? await describe(song) : 'no song. Open the lyrics view in Amazon Music.');
+  const note = LRC_NOTES[(song && song.lrc) || ''];
+  $('song').textContent = 'This song: ' + (tabId ? await describe(song) : note && !song.key ? note.song : 'no song. Open the lyrics view in Amazon Music.');
+  $('lrcNote').hidden = !note;
+  $('lrcNote').textContent = note ? note.text : '';
+  $('lrcNote').dataset.kind = (song && song.lrc) || '';
 }
+// LRCLIB state for songs Amazon has no lyrics for (from the page; see lrcStatus() in content.js).
+const LRC_NOTES = {
+  synced: { text: 'Lyrics added from LRCLIB (synced)' },
+  unsynced: { text: 'Lyrics added from LRCLIB (unsynced)' },
+  'hidden-synced': { text: 'Lyrics from LRCLIB (synced), panel hidden for this song', song: 'lyrics panel hidden.' },
+  'hidden-unsynced': { text: 'Lyrics from LRCLIB (unsynced), panel hidden for this song', song: 'lyrics panel hidden.' },
+  pending: { text: 'Amazon has no lyrics; looking on LRCLIB…', song: 'no lyrics on Amazon.' },
+  none: { text: 'Amazon has no lyrics; none found on LRCLIB', song: 'no lyrics on Amazon.' },
+  error: { text: "Amazon has no lyrics; LRCLIB didn't answer, will retry", song: 'no lyrics on Amazon.' },
+};
 
 // "This song": detected language(s) + how its lines are translated, from the cache entry the background keeps.
 const langName = (code) => { try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code.replace(/^iw/, 'he').split('-')[0]); } catch (e) { return code; } };

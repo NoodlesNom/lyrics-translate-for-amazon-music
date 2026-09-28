@@ -45,10 +45,26 @@
       </div>
     </div></div>
   </section>
-  <div class="css-175oi2r r-18u37iz r-1awozwy" style="position:fixed;left:0;right:0;bottom:0;height:64px;z-index:3;background:#111;padding:0 24px;gap:16px">
-    <a id="barTitle" dir="auto" class="css-1jxf684 r-link" href="#" style="color:#fff;text-decoration:none"></a>
-    <a id="barArtist" dir="auto" class="css-1jxf684 r-link" href="#" style="color:rgba(255,255,255,.6);text-decoration:none"></a>
-    <div id="clock" dir="auto" class="css-1jxf684" style="color:rgba(255,255,255,.4);font-size:12px">0:00</div>
+  <!-- page clock (ticks every 500 ms, like Amazon's ever-changing DOM); kept outside the player bar -->
+  <div id="clock" dir="auto" class="css-1jxf684" style="position:fixed;left:8px;top:4px;z-index:4;color:rgba(255,255,255,.3);font-size:10px">tick 0</div>
+  <!-- player bar (INVENTED structure, not copied from Amazon): title/artist links, transport, elapsed / progress / duration, lyrics button -->
+  <div id="playerBar" class="css-175oi2r r-18u37iz r-1awozwy" style="position:fixed;left:0;right:0;bottom:0;height:72px;z-index:3;background:#111;padding:0 24px;gap:16px">
+    <div class="css-175oi2r" style="width:220px">
+      <a id="barTitle" dir="auto" class="css-1jxf684 r-link" href="/albums/B0MOCKALB?trackAsin=B0MOCKTRK" style="color:#fff;text-decoration:none"></a>
+      <a id="barArtist" dir="auto" class="css-1jxf684 r-link" href="/artists/B0MOCKART/mock-artist" style="color:rgba(255,255,255,.6);text-decoration:none"></a>
+    </div>
+    <div class="css-175oi2r r-18u37iz r-1awozwy" style="gap:10px">
+      <div role="button" tabindex="0" aria-label="Previous" style="width:28px;height:28px;border-radius:14px;background:#ffffff22"></div>
+      <div id="playBtn" role="button" tabindex="0" aria-label="Pause" style="width:36px;height:36px;border-radius:18px;background:#ffffff44"></div>
+      <div role="button" tabindex="0" aria-label="Next" style="width:28px;height:28px;border-radius:14px;background:#ffffff22"></div>
+    </div>
+    <div class="css-175oi2r r-18u37iz r-1awozwy r-13awgt0" style="gap:10px">
+      <div id="elapsed" dir="auto" class="css-1jxf684" style="color:rgba(255,255,255,.6);font-size:12px">0:00</div>
+      <div id="progress" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" class="css-175oi2r r-13awgt0" style="height:4px;background:#ffffff33;border-radius:2px"><div id="progressFill" style="height:4px;width:0;background:#25d1da"></div></div>
+      <div id="duration" dir="auto" class="css-1jxf684" style="color:rgba(255,255,255,.6);font-size:12px">0:00</div>
+    </div>
+    <div id="lyricsBtn" role="button" tabindex="0" aria-label="Lyrics" style="width:28px;height:28px;border-radius:6px;background:#ffffff22"></div>
+    <div role="button" tabindex="0" aria-label="Volume" style="width:28px;height:28px;border-radius:6px;background:#ffffff22"></div>
   </div>
 </div>
 <script>
@@ -75,6 +91,12 @@
     6: { title: 'Mar Azul (Test)', artist: 'Mock Español', lines: ['Las olas cantan en la arena', 'Mi barco duerme junto al muelle', 'La luna pinta el agua de plata'] },
     8: { title: 'Mixed Tide (Test)', artist: 'Mock Español', lines: ['We fold the paper planes at dawn', 'Las olas cantan en la arena', 'The kettle hums a sleepy tune', 'Mi barco duerme junto al muelle'] },
     7: { title: 'Mixed Lantern (Test)', artist: 'Mock Artist', lines: ['夜の窓に小さな星が光る', '青い傘を持って歩いた', 'The city lights are humming low', 'I keep a paper boat for you'] },
+    // Amazon has NO lyrics for these (lyrics button disabled unless ?lyricsbtn= says otherwise)
+    9: { title: 'Glass Harbor (Test)', artist: 'Mock Singer', dur: 200, lines: [], nolyrics: true },
+    10: { title: 'Tin Roof (Test)', artist: 'Mock Singer & Guest', dur: 180, lines: [], nolyrics: true },
+    11: { title: 'Far Off (Test)', artist: 'Mock Singer', dur: 180, lines: [], nolyrics: true },
+    12: { title: 'Nowhere (Test)', artist: 'Mock Nobody', dur: 150, lines: [], nolyrics: true },
+    13: { title: 'Split Signal (Test)', artist: 'Mock Singer', dur: 199, lines: [], nolyrics: true },
   };
   const H4_STYLE = 'font-family: EmberModernDisplayStd-Bold; font-size: 24px; color: rgba(255, 255, 255, 0.3); text-align: right; direction: ltr; padding: 6px 12px; border-radius: 12px;';
   const ACTIVE = 'font-family: EmberModernDisplayStd-Bold; font-size: 24px; color: rgb(255, 255, 255); text-align: right; direction: ltr; padding: 6px 12px; border-radius: 12px; background-color: rgb(26, 111, 209);';
@@ -94,6 +116,14 @@
     return row;
   }
   function renderList(lines) {                      // like React mounting a new list
+    if (params.get('view') === 'closed') { document.getElementById('scroller').replaceChildren(); return document.createElement('div'); }
+    if (params.get('lyricsview') === 'none' || (!lines.length && SONGS[current].nolyrics && params.get('view') === 'open')) {
+      const empty = document.createElement('div');
+      empty.setAttribute('dir', 'auto'); empty.className = 'css-1jxf684';
+      empty.textContent = 'Lyrics aren\u2019t available for this song';
+      document.getElementById('scroller').replaceChildren(empty);
+      return document.createElement('div');
+    }
     const list = document.createElement('div');
     list.className = 'css-175oi2r';
     list.setAttribute('style', 'padding-top: 191px; padding-bottom: 191px;');
@@ -103,12 +133,50 @@
   }
   function setMeta(s) {
     const title = params.get('title') || s.title;    // ?title= gives the same lines a different song identity (cache tests)
+    s = { ...s, artist: params.get('artist') || s.artist };  // ?artist= (real-API smoke test only)
     document.querySelector('[data-testid="WidgetHeader_Primary_Related_playlists"]').textContent = title;
     document.querySelector('.r-artist').textContent = s.artist;
     document.getElementById('barTitle').textContent = title;
     document.getElementById('barArtist').textContent = s.artist;
     if (!params.has('nomedia') && 'mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title, artist: s.artist });
+    // Lyrics button: ?lyricsbtn=enabled|disabled|missing overrides the song's own state.
+    const btnState = params.get('lyricsbtn') || (s.nolyrics ? 'disabled' : 'enabled');
+    const btn = document.getElementById('lyricsBtn');
+    btn.style.display = btnState === 'missing' ? 'none' : '';
+    if (btnState === 'missing') btn.removeAttribute('aria-label'); else btn.setAttribute('aria-label', 'Lyrics');
+    if (btnState === 'disabled') btn.setAttribute('aria-disabled', 'true'); else btn.removeAttribute('aria-disabled');
+    if (btnState === 'missing') btn.removeAttribute('role'); else btn.setAttribute('role', 'button');
+    player.load(Number(params.get('dur')) || s.dur || 215);
   }
+  // Fake player clock: elapsed/duration texts (m:ss) and an integer-second slider, updated 4x per second.
+  // ?bar=text → no slider; ?bar=remaining → elapsed + "-m:ss" remaining, no slider; ?bar=slider → slider only (valuetext).
+  const barMode = params.get('bar') || 'both';
+  const fmt = (x) => Math.floor(x / 60) + ':' + String(Math.floor(x % 60)).padStart(2, '0');
+  const player = window.mockPlayer = {
+    pos: 0, dur: 0, playing: true, t0: performance.now(),
+    now() { return this.playing ? Math.min(this.dur, this.pos + (performance.now() - this.t0) / 1000) : this.pos; },
+    load(dur) { this.dur = dur; this.pos = Number(params.get('start')) || 0; this.t0 = performance.now(); this.playing = !params.has('paused'); this.render(); },
+    seek(x) { this.pos = x; this.t0 = performance.now(); this.render(); },
+    pause() { this.pos = this.now(); this.playing = false; this.render(); },
+    play() { this.t0 = performance.now(); this.playing = true; this.render(); },
+    render() {
+      const x = this.now();
+      const el = document.getElementById('elapsed'), du = document.getElementById('duration'), sl = document.getElementById('progress');
+      const set = (n, v) => { if (n.textContent !== v) n.textContent = v; };
+      set(el, fmt(x));
+      set(du, barMode === 'remaining' ? '-' + fmt(Math.max(0, this.dur - Math.floor(x))) : fmt(this.dur));
+      el.style.display = barMode === 'slider' ? 'none' : '';
+      du.style.display = barMode === 'slider' ? 'none' : '';
+      if (barMode === 'text' || barMode === 'remaining') sl.removeAttribute('role'); else sl.setAttribute('role', 'slider');
+      if (sl.getAttribute('aria-valuenow') !== String(Math.floor(x))) sl.setAttribute('aria-valuenow', String(Math.floor(x)));
+      sl.setAttribute('aria-valuemax', String(this.dur));
+      if (barMode === 'slider') sl.setAttribute('aria-valuetext', fmt(x) + ' of ' + fmt(this.dur)); else sl.removeAttribute('aria-valuetext');
+      document.getElementById('progressFill').style.width = (this.dur ? (x / this.dur) * 100 : 0) + '%';
+      const pb = document.getElementById('playBtn');
+      if (pb.getAttribute('aria-label') !== (this.playing ? 'Pause' : 'Play')) pb.setAttribute('aria-label', this.playing ? 'Pause' : 'Play');
+    },
+  };
+  setInterval(() => player.render(), 250);
   // Renders a song in chunks (3 lines, then one more every 150 ms), like a list that fills in progressively.
   window.setSongChunked = (n) => {
     const s = SONGS[n]; current = n; setMeta(s);
@@ -121,7 +189,7 @@
   window.setNodeValue = (i, text) => { lineH4(i).firstChild.nodeValue = text; };                         // React text-node update
   let tick = 0, cur = 0;
   setInterval(() => {                               // playback clock + moving active highlight (style attribute only)
-    document.getElementById('clock').textContent = `0:${String(++tick % 60).padStart(2, '0')}`;
+    document.getElementById('clock').textContent = `tick ${++tick % 60}`;
     document.querySelectorAll('div[style*="padding-top: 191px"] > div > h4').forEach((h, i, all) => h.setAttribute('style', i === cur % all.length ? ACTIVE : H4_STYLE));
     cur++;
   }, 500);

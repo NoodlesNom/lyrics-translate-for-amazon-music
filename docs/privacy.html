@@ -18,13 +18,14 @@
 </header>
 <main class="doc">
   <h1>Privacy Policy</h1>
-  <p class="note">Lyrics Translate &amp; Romanize for Amazon Music · Effective date: September 27, 2026</p>
+  <p class="note">Lyrics Translate &amp; Romanize for Amazon Music · Effective date: September 28, 2026</p>
   <p>This policy covers the Microsoft Edge extension "Lyrics Translate &amp; Romanize for Amazon Music" (the "extension"), published by NoodlesNom. The extension is not affiliated with Amazon.</p>
 
   <h2>Summary</h2>
   <ul>
     <li><b>The developer collects no data.</b> There are no analytics, no trackers, no advertising, no accounts and no servers run by the developer. Nothing is ever sent to the developer.</li>
     <li><b>Lyric lines are sent to Google only to translate or romanize them.</b> The lyric lines shown on screen in the Amazon Music web player go to Google Translate, and to Google Gemini if you added your own API key.</li>
+    <li><b>For songs Amazon has no lyrics for, the song's title, artist and duration are sent to LRCLIB</b> (lrclib.net), a free lyrics database, to find lyrics for them. You can turn this off in the popup ("Find lyrics when Amazon has none").</li>
     <li><b>Everything else stays in your browser.</b> Your Gemini key and the translation cache are kept in the extension's local storage, and your settings in the extension's sync storage. Removing the extension clears them.</li>
   </ul>
 
@@ -32,7 +33,8 @@
   <p>The extension runs only on <code>https://music.amazon.com/*</code>. There it reads:</p>
   <ul>
     <li>the text of the lyric lines shown in the lyrics view, and</li>
-    <li>the current song's title and artist (from the browser's media-session information or the Now Playing heading), used only as a local cache key so a song isn't translated twice.</li>
+    <li>the current song's title and artist (from the browser's media-session information, the Now Playing heading or the player bar), used as a local cache key so a song isn't translated twice, and, for songs Amazon has no lyrics for, to look up lyrics on LRCLIB, and</li>
+    <li>from the player bar: the song's duration and playback position (to find the matching lyrics and highlight the current line) and whether Amazon's lyrics button is available.</li>
   </ul>
   <p>It does not read cookies, your account, your listening history, or any other site.</p>
 
@@ -41,16 +43,18 @@
     <tr><th>Recipient</th><th>What is sent</th><th>When</th><th>Why</th></tr>
     <tr><td>Google Translate (<code>clients5.google.com</code>, fallback <code>translate.googleapis.com</code>)</td><td>The lyric lines on screen and the target language code</td><td>When a song's lyrics are shown and aren't in the cache yet</td><td>To translate the lines, detect their language and romanize non-Latin lines</td></tr>
     <tr><td>Google Gemini API (<code>generativelanguage.googleapis.com</code>)</td><td>The song's lyric lines, the target language, and <b>your own</b> API key (in a request header)</td><td>Only if you saved a Gemini key and Gemini is selected, and the song isn't already in your target language</td><td>To translate the lines</td></tr>
+    <tr><td>LRCLIB (<code>lrclib.net</code>)</td><td>The song's <b>title, artist and duration</b> (in seconds), plus a header naming the extension (<code>Lrclib-Client</code>)</td><td>Only when Amazon Music shows no lyrics for the song, "Find lyrics when Amazon has none" is on (default), and the song isn't already in the cache</td><td>To find the song's lyrics (synced if available)</td></tr>
   </table>
-  <p>Requests are made without cookies. No song titles, artist names, history, identifiers or other personal data are sent. Google processes these requests under its own terms and privacy policy (<a href="https://policies.google.com/privacy">Google Privacy Policy</a>, <a href="https://ai.google.dev/gemini-api/terms">Gemini API Additional Terms</a>). On Gemini's free tier, Google may use submitted content to improve its products.</p>
+  <p>Requests are made without cookies. Apart from the title, artist and duration sent to LRCLIB as described above, no song titles, artist names, history, identifiers or other personal data are sent. LRCLIB is an independent third-party service; see <a href="https://lrclib.net">lrclib.net</a>. Google processes its requests under its own terms and privacy policy (<a href="https://policies.google.com/privacy">Google Privacy Policy</a>, <a href="https://ai.google.dev/gemini-api/terms">Gemini API Additional Terms</a>). On Gemini's free tier, Google may use submitted content to improve its products.</p>
 
   <h2>What is stored, and where</h2>
   <p>All storage is the browser's own extension storage (<code>chrome.storage</code>). The developer can't access it.</p>
   <ul>
     <li><b>Gemini API key</b>: <code>chrome.storage.local</code> only (this browser, never synced). You can remove it any time with <b>Remove key</b> on the Settings page.</li>
     <li><b>Translation cache</b>: <code>chrome.storage.local</code>. For up to 2000 songs it keeps the song title and artist (as the cache key), the lyric lines, their translations and romanizations, and the time last played. The least recently played songs are removed first when the cache is full.</li>
+    <li><b>LRCLIB lyrics cache</b>: <code>chrome.storage.local</code>. For songs Amazon has no lyrics for, the lyrics found on LRCLIB (with the LRCLIB record id and the song duration), or a "not found" note that expires after 7 days, under the same title/artist cache key and 2000-song limit as the translation cache.</li>
     <li><b>Gemini status</b> (the last Gemini result, such as "ok" or "quota", and its time): <code>chrome.storage.local</code>.</li>
-    <li><b>Settings</b> (target language, translator, text size and the on/off toggles): <code>chrome.storage.sync</code>, so Microsoft Edge may sync them between your own signed-in browsers. Your key is never put in sync storage.</li>
+    <li><b>Settings</b> (target language, translator, text size and the on/off toggles, including "Find lyrics when Amazon has none"): <code>chrome.storage.sync</code>, so Microsoft Edge may sync them between your own signed-in browsers. Your key is never put in sync storage.</li>
   </ul>
   <p><b>Removing the extension deletes all of this data.</b></p>
 

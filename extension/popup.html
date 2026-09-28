@@ -16,6 +16,7 @@
   #force { width: 100%; margin: 2px 0 6px; padding: 5px; background: #1c1f20; color: #fff; border: 1px solid #3a3f41; border-radius: 6px; font: inherit; cursor: pointer; }
   #force:disabled { opacity: .45; cursor: default; }
   #forceMsg:empty { display: none; }
+  .note { color: #25d1da; } .note[data-kind=none], .note[data-kind=error] { color: #ffb300; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: #8a8f91; }
   [data-state=green] .dot { background: #3ddc84; } [data-state=amber] .dot { background: #ffb300; } [data-state=red] .dot { background: #ff5252; }
 </style>
@@ -42,6 +43,7 @@
   </label>
   <div id="gstate" class="status" data-state="gray"><span class="dot"></span><span id="glabel"></span></div>
   <div id="song" class="status">This song: no song. Open the lyrics view in Amazon Music.</div>
+  <div id="lrcNote" class="status note" hidden></div>
   <button id="force" disabled title="Open a song's lyrics in Amazon Music first">Translate this song</button>
   <div id="forceMsg" class="status"></div>
   <label>Text size
@@ -53,8 +55,9 @@
   <label>Show translation <input type="checkbox" id="trans"></label>
   <label>Show original lyrics <input type="checkbox" id="orig"></label>
   <label>Show floating button <input type="checkbox" id="float"></label>
+  <label title="When Amazon has no lyrics for a song, look it up on LRCLIB (lrclib.net) and show them in a small panel">Find lyrics when Amazon has none <input type="checkbox" id="lrclib"></label>
   <div id="counter" class="status" title="Per translator: songs fully translated into the selected language"></div>
-  <p>Lyric lines are sent to Google (Translate, or Gemini if chosen) to be translated. <a href="#" id="settings">Settings</a></p>
+  <p>Lyric lines are sent to Google (Translate, or Gemini if chosen) to be translated. For songs Amazon has no lyrics for, the title, artist and duration are sent to LRCLIB. <a href="#" id="settings">Settings</a></p>
   <script src="popup.js"></script>
 </body>
 </html>

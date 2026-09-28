@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Playwright tests for the extension against a local mock page (invented lyric lines only)",
   "scripts": {
-    "test": "node test.js && node test-gemini.js && node test-extra.js"
+    "test": "node test.js && node test-gemini.js && node test-lrclib.js && node test-extra.js"
   },
   "author": "NoodlesNom",
   "license": "MIT",
