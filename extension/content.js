@@ -19,6 +19,16 @@
   // Amazon's lyrics indicator: a badge next to the mini-player title. No badge = Amazon has no lyrics for the song.
   const LYRICS_BADGE = '[data-testid="Badge"][aria-label="Lyrics available"]';
   const CLUSTER_UP = 4; // levels walked up from the title to the cluster that holds the title, artist and badge slots
+  // --- Full view ("stage", verified live 2026-09-28): an in-page overlay (not the Fullscreen API), opened from the
+  // mini-player's "Enter Full Screen" button. Amazon's lyrics only ever show here, in Stage_OverlaysContainer, right of
+  // the art; for songs without lyrics that container is empty and collapsed to 0 px width. The mini-player title may be
+  // gone while it's open; its transport buttons keep their MiniPlayer_* testids.
+  const STAGE_ART = 'Stage_TileImage';                           // div[data-testid="Imagery,Stage_TileImage"][role=img]
+  const STAGE_TITLE = '[data-testid="Stage_Title"]';             // a: text/aria-label = title (href may hold /tracks/<ASIN>)
+  const STAGE_SUBTITLE = '[data-testid="Stage_Subtitle"]';       // artist(s)
+  const STAGE_LYRICS = '[data-testid="Stage_OverlaysContainer"]'; // Amazon's lyrics column (empty = no lyrics)
+  const STAGE_MINIMIZE = '[aria-label="Minimize"][data-testid*="OpenMiniPlayerIconButton"]';
+  const ANY_SLIDER = '[role="slider"][aria-label]';              // fallback clock: a slider labelled "Playback 1:23 of 3:45"
   // ================================================================================================
 
   const NON_LATIN = /[^\P{L}\p{Script=Latin}]/u;
@@ -35,7 +45,7 @@
 
   const isOurs = (n) => {
     const el = n.nodeType === 1 ? n : n.parentElement;
-    return !!(el && el.closest('.amlt, .amlt-float, .amlt-panel, .amlt-lrc'));
+    return !!(el && el.closest('.amlt, .amlt-float, .amlt-panel, .amlt-stage'));
   };
   // Our own inserts/removals are ignored, so annotating never re-triggers a scan.
   const observer = new MutationObserver((muts) => {
@@ -46,9 +56,15 @@
     }
   });
 
+  // Debounced, but a page that never stops changing (clocks, sliders) can't postpone a scan by more than MAX_WAIT.
+  const MAX_WAIT = 1000;
+  let firstAsk = 0;
   function schedule(delay = 250) {
+    const now = Date.now();
+    if (!timer) firstAsk = now;
+    else if (now + delay - firstAsk > MAX_WAIT) return;
     clearTimeout(timer);
-    timer = setTimeout(scan, delay);
+    timer = setTimeout(() => { timer = 0; scan(); }, delay);
   }
 
   function findLines() {
@@ -213,46 +229,86 @@
   window.addEventListener('message', (e) => { if (panel && e.source === panel.contentWindow && e.data === 'amlt-close') closePanel(); }); // Esc inside the panel
 
   // ===================== LRCLIB fallback: synced lyrics when Amazon has none =====================
-  // Amazon marks songs that have lyrics with a "Lyrics available" badge next to the mini-player title. A song counts as
-  // lyric-less only when the mini-player shows a title, Amazon's lyrics view shows no lines, and no such badge has
-  // appeared in the title's cluster for SETTLE_MS (badges can render after the title). Title, artist, track ASIN and
-  // the clock come from the mini-player. The lookup and its cache live in background.js; this part shows the result
-  // in a small panel above the mini-player and highlights the line being sung.
+  // A song counts as lyric-less when (1) a title is shown (mini-player, or the full view's Stage_Title while that's
+  // open), (2) Amazon shows no lyric lines, the full view's lyrics column (if open) is empty, and no "Lyrics available"
+  // badge sits next to the title, (3) for SETTLE_MS after that started (badges and lyrics can render late). The lookup and
+  // its cache live in background.js. The result is shown ONLY in the full view, in the spot where Amazon's own lyrics
+  // appear (right of the art), styled like them; on the normal page nothing is shown (the popup says where to look).
   const SETTLE_MS = 1800;
   const LRC_RETRY_MS = 60000, LRC_TRIES = 3, LRC_LEAD = 0.15;
-  let lrc = null;             // the panel: { id, key, panel, body, els, times, active, synced }
-  let seen = { sig: '', since: 0 }, lrcId = '', lrcTimer = 0, lrcTick = 0, lrcHidden = '', lrcMin = false;
+  let lrc = null;             // shown lyrics: { id, key, root, scroll, list, els, times, active, synced }
+  let seen = { sig: '', since: 0 }, lrcId = '', lrcTimer = 0, lrcTick = 0, lastMini = null;
   const lrcMemo = new Map();  // song id -> { state: pending|found|none|error, data, retryAt, tries }
 
   const testids = (el) => (el.getAttribute('data-testid') || '').split(',').map((t) => t.trim());
+  const byTestid = (id) => [...document.querySelectorAll(`[data-testid*="${id}"]`)].filter((e) => testids(e).includes(id));
   const visible = (el) => el.getClientRects().length > 0;
+  const firstVisible = (sel) => { const all = [...document.querySelectorAll(sel)]; return all.find(visible) || null; };
   const miniTitle = () => { const all = [...document.querySelectorAll(MINI_TITLE)]; return all.find(visible) || all[0] || null; };
   const playButton = () => [...document.querySelectorAll(MINI)].find((e) => testids(e).some((t) => t === 'MiniPlayer_Pause' || t === 'MiniPlayer_Play'));
-  // The title's cluster: the nearest ancestor (a few levels up) that also holds the artist link, and so the badge slot.
-  function clusterOf(title) {
+  const asinOf = (a) => (/\/tracks\/([A-Za-z0-9]+)/.exec((a && a.getAttribute('href')) || '') || [])[1] || '';
+  // The title's cluster: the nearest ancestor (a few levels up) that also holds the artist, and so the badge slot.
+  function clusterOf(title, artistSel) {
     let n = title.parentElement;
-    for (let i = 0; n && n !== document.body && i < CLUSTER_UP; i++, n = n.parentElement) if (n.querySelector(MINI_ARTIST)) return n;
+    for (let i = 0; n && n !== document.body && i < CLUSTER_UP; i++, n = n.parentElement) if (n.querySelector(artistSel)) return n;
     return (title.parentElement && title.parentElement.parentElement) || title.parentElement;
   }
 
-  // The playing song as the mini-player shows it, or null when there's no mini-player title.
+  // The playing song: from the mini-player title when there is one, else from the full view's Stage_Title/Stage_Subtitle.
+  // A Stage_Title without a /tracks/ link keeps the last mini-player ASIN (and artist) when the title is the same, so
+  // opening the full view doesn't turn the song into a "new" one.
   function player() {
     const t = miniTitle();
     const title = t && clean(t.getAttribute('aria-label') || t.textContent);
-    if (!title) return null;
-    const cluster = clusterOf(t);
-    const a = cluster && cluster.querySelector(MINI_ARTIST);
-    const artist = a ? clean(a.getAttribute('aria-label') || a.textContent) : '';
-    const asin = (/\/tracks\/([A-Za-z0-9]+)/.exec(t.getAttribute('href') || '') || [])[1] || '';
+    if (title) {
+      const cluster = clusterOf(t, MINI_ARTIST);
+      const a = cluster && cluster.querySelector(MINI_ARTIST);
+      const artist = a ? clean(a.getAttribute('aria-label') || a.textContent) : '';
+      const asin = asinOf(t);
+      lastMini = { title, artist, asin };
+      return song(title, artist, asin, !!(cluster && cluster.querySelector(LYRICS_BADGE)));
+    }
+    const s = firstVisible(STAGE_TITLE);
+    const stitle = s && clean(s.getAttribute('aria-label') || s.textContent);
+    if (!stitle) return null;
+    const sub = firstVisible(STAGE_SUBTITLE);
+    const links = sub ? [...sub.querySelectorAll(MINI_ARTIST)] : [];
+    let artist = links.length ? links.map((l) => clean(l.getAttribute('aria-label') || l.textContent)).filter(Boolean).join(', ') : clean(sub && sub.textContent);
+    let asin = asinOf(s);
+    if (lastMini && lastMini.title === stitle && (!asin || asin === lastMini.asin)) { asin = asin || lastMini.asin; artist = lastMini.artist || artist; }
+    const cluster = clusterOf(s, STAGE_SUBTITLE);
+    return song(stitle, artist, asin, !!(cluster && cluster.querySelector(LYRICS_BADGE)));
+  }
+  function song(title, artist, asin, badge) {
     const key = asin ? 'asin:' + asin : 'bar:' + title + '|' + artist;
-    return { id: key, key, title, artist, asin, badge: !!(cluster && cluster.querySelector(LYRICS_BADGE)) };
+    return { id: key, key, title, artist, asin, badge };
   }
 
-  // amazon = Amazon has lyrics (badge, or its lyrics view shows lines) | checking = no badge yet, within the settle
-  // window after a title change | none = Amazon has no lyrics | '' = no mini-player title.
-  function lyricsState(p, amazonHasLines) {
+  // The full view, or null when it's closed: the art, Amazon's lyrics column and whether that column holds anything.
+  // "Open" = the art (or, without art, the lyrics column) is really on screen: inside the viewport, and not hidden or
+  // faded out by an ancestor (so a full view left mounted off-screen or mid-close doesn't count).
+  function onScreen(el, minSize) {
+    const r = el.getBoundingClientRect();
+    if (r.width < minSize || r.height < 40 || r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) return false;
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      const cs = getComputedStyle(n);
+      if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) < 0.1) return false;
+    }
+    return true;
+  }
+  function stageView() {
+    const art = byTestid(STAGE_ART).find((e) => onScreen(e, 40)) || null;
+    const box = [...document.querySelectorAll(STAGE_LYRICS)].find((e) => onScreen(e, 0)) || null;
+    if (!art && !box) return null;
+    const filled = !!box && (!!box.querySelector('h4') || (box.children.length > 0 && box.getBoundingClientRect().width > 40));
+    return { art, box, filled };
+  }
+
+  // amazon = Amazon has lyrics (badge, lines on screen, or a filled lyrics column) | checking = none of that yet, within
+  // the settle window | none = Amazon has no lyrics | '' = no song title anywhere.
+  function lyricsState(p, amazonHasLines, st) {
     if (!p) return '';
-    const sig = p.badge || amazonHasLines ? '' : p.id; // the settle window restarts whenever this changes
+    const sig = p.badge || amazonHasLines || (st && st.filled) ? '' : p.id; // the settle window restarts whenever this changes
     if (sig !== seen.sig) seen = { sig, since: Date.now() };
     if (!sig) return 'amazon';
     const wait = seen.since + SETTLE_MS - Date.now();
@@ -260,9 +316,10 @@
     return 'none';
   }
 
-  // Clock: a reachable <audio>/<video> (exact), else the mini-player slider: its aria-label "Playback 1:23 of 3:45"
-  // (m:ss or h:mm:ss, any language) and aria-valuenow/valuemax when they are present and fit the duration.
+  // Clock: a reachable <audio>/<video> (exact), else the player's progress slider (MiniPlayer_ProgressSlider, or any
+  // slider labelled "Playback 1:23 of 3:45"): m:ss or h:mm:ss, plus aria-valuenow/valuemax when they fit the duration.
   const TIMES = /\d{1,2}(?::\d{2}){1,2}/g;
+  const PLAYBACK = /playback .* of /i;
   const secs = (s) => s.split(':').reduce((a, x) => a * 60 + Number(x), 0);
   const attrNum = (el, a) => { const v = el.getAttribute(a); return v === null || v === '' || isNaN(v) ? null : Number(v); };
   function playing() {
@@ -271,10 +328,15 @@
     const ps = navigator.mediaSession && navigator.mediaSession.playbackState;
     return ps === 'playing' || ps === 'paused' ? ps === 'playing' : null;
   }
+  function slider() {
+    let all = [...document.querySelectorAll(MINI_SLIDER)];
+    if (!all.length) all = [...document.querySelectorAll(ANY_SLIDER)].filter((e) => PLAYBACK.test(e.getAttribute('aria-label')));
+    return all.find(visible) || all[0] || null;
+  }
   function readClock() {
     const media = [...document.querySelectorAll('audio, video')].find((m) => m.duration > 0 && isFinite(m.duration));
     if (media) return { pos: media.currentTime, dur: media.duration, playing: !media.paused, exact: true };
-    const sl = [...document.querySelectorAll(MINI_SLIDER)].find(visible) || document.querySelector(MINI_SLIDER);
+    const sl = slider();
     if (!sl) return null;
     const t = (sl.getAttribute('aria-label') || '').match(TIMES) || [];
     let pos = t.length ? secs(t[0]) : null, dur = t.length > 1 ? secs(t[1]) : null;
@@ -302,17 +364,21 @@
     return playing ? anchor.pos + Math.min((now - anchor.t) / 1000, 1.25) : anchor.pos;
   }
 
+  // Looks the song up as soon as it counts as lyric-less (also with the full view closed, so the popup can say lyrics
+  // are ready); shows them only while the full view is open. Stage closed, song change or Amazon lines = removed.
   function checkLrc(amazonHasLines) {
     const p = dead ? null : player();
-    const state = lyricsState(p, amazonHasLines);
+    const st = dead ? null : stageView();
+    const state = lyricsState(p, amazonHasLines, st);
     const id = settings.lrclib && state === 'none' ? p.id : '';
     lrcId = id;
-    if (!id || (lrc && lrc.id !== id)) hideLrc();
+    if (!id || !st || (lrc && lrc.id !== id)) hideLrc();
     if (!id) return;
-    if (lrc) return placeLrc();
     const m = lrcMemo.get(id);
     if (!m || (m.state === 'error' && m.retryAt <= Date.now() && m.tries < LRC_TRIES)) return lookupLrc(p, m);
-    if (m.state === 'found' && lrcHidden !== id) showLrc(p, m.data);
+    if (!st) return;
+    if (lrc) return placeLrc(st);
+    if (m.state === 'found') showLrc(p, m.data, st);
   }
 
   function lookupLrc(p, prev) {
@@ -337,56 +403,43 @@
     });
   }
 
-  function showLrc(p, data) {
+  // Our own fixed-position element (a <body> child), NOT a child of Amazon's lyrics column: that column is React-managed
+  // (it can be re-rendered or collapsed at any time, which would wipe foreign children), while a body child survives
+  // re-renders and is simply placed over the empty spot. content.js keeps its box on Amazon's lyrics column (see placeLrc).
+  function showLrc(p, data, st) {
     const synced = Array.isArray(data.synced) && data.synced.length > 0;
     const rows = synced ? data.synced : (data.plain || []).map((t) => [null, t]);
-    if (!rows.length) return;
-    const panel = document.createElement('div');
-    panel.className = 'amlt-lrc' + (synced ? '' : ' amlt-lrc-plain') + (lrcMin ? ' amlt-lrc-min' : '');
-    panel.setAttribute('role', 'region');
-    panel.setAttribute('aria-label', 'Lyrics from LRCLIB');
-    const head = document.createElement('div');
-    head.className = 'amlt-lrc-head';
-    const title = document.createElement('span');
-    title.className = 'amlt-lrc-title';
-    title.textContent = 'Lyrics';
-    const src = document.createElement('span');
-    src.className = 'amlt-lrc-src';
-    src.textContent = synced ? 'from LRCLIB' : 'from LRCLIB · not synced';
-    src.title = 'Amazon has no lyrics for this song. These come from lrclib.net.';
-    const btn = (act, label, text) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'amlt-lrc-btn';
-      b.dataset.act = act;
-      b.title = b.ariaLabel = label;
-      b.textContent = text;
-      return b;
-    };
-    head.append(title, src, btn('min', 'Minimize', '\u2013'), btn('close', 'Hide for this song', '\u00d7'));
-    const body = document.createElement('div');
-    body.className = 'amlt-lrc-body';
+    if (!rows.length || !document.body) return;
+    const root = document.createElement('div');
+    root.className = 'amlt-stage' + (synced ? '' : ' amlt-stage-plain');
+    root.setAttribute('role', 'region');
+    root.setAttribute('aria-label', 'Lyrics from LRCLIB');
+    const scroll = document.createElement('div');
+    scroll.className = 'amlt-stage-scroll';
+    const list = document.createElement('div');
+    list.className = 'amlt-stage-list';
     const els = rows.map(([, text]) => {
       const line = document.createElement('div');
-      line.className = 'amlt-lrc-line';
+      line.className = 'amlt-stage-line';
       line.dir = 'auto';
       line.textContent = text || '\u266a';
       return line;
     });
-    body.append(...els);
-    panel.append(head, body);
-    head.addEventListener('click', (e) => {
-      const act = e.target && e.target.dataset && e.target.dataset.act;
-      if (act === 'min') { lrcMin = !lrcMin; panel.classList.toggle('amlt-lrc-min', lrcMin); }
-      if (act === 'close') { lrcHidden = lrc.id; hideLrc(); }
-    });
+    list.append(...els);
+    scroll.append(list);
+    const credit = document.createElement('div');
+    credit.className = 'amlt-stage-credit';
+    credit.textContent = synced ? 'Lyrics from LRCLIB' : 'Lyrics from LRCLIB \u00b7 not synced';
+    credit.title = 'Amazon has no lyrics for this song. These come from lrclib.net.';
+    root.append(scroll, credit);
     let userAt = 0;
-    for (const ev of ['wheel', 'touchmove', 'pointerdown']) body.addEventListener(ev, () => { userAt = Date.now(); }, { passive: true });
-    lrc = { id: p.id, key: p.key, panel, body, els, synced, times: synced ? rows.map(([t]) => t) : [], active: -1, userAt: () => userAt };
-    document.body.appendChild(panel);
-    placeLrc();
+    for (const ev of ['wheel', 'touchmove', 'pointerdown']) scroll.addEventListener(ev, () => { userAt = Date.now(); }, { passive: true });
+    lrc = { id: p.id, key: p.key, root, scroll, list, els, synced, times: synced ? rows.map(([t]) => t) : [], active: -1, jumped: false, box: '', userAt: () => userAt };
+    document.body.appendChild(root);
+    placeLrc(st);
     anchor = null;
-    if (synced) { tickLrc(); lrcTick = setInterval(tickLrc, 200); }
+    tickLrc();
+    lrcTick = setInterval(tickLrc, 200);
     schedule(0); // translate/romanize the new lines
   }
 
@@ -395,34 +448,70 @@
     lrcTick = 0;
     if (!lrc) return;
     for (const el of lrc.els) { const b = ownBlock(el); if (b) blocks.delete(b); }
-    lrc.panel.remove();
+    lrc.root.remove();
     lrc = null;
     anchor = null;
   }
 
-  // Sits above the mini-player (its whole bar: the smallest box holding its title and Play/Pause button), right edge.
-  function miniTop() {
-    const t = miniTitle(), b = playButton();
-    let root = t && b ? t.parentElement : null;
-    while (root && !root.contains(b)) root = root.parentElement;
-    const r = root && root.getBoundingClientRect();
-    if (r && r.height > 0 && r.height <= innerHeight * 0.4) return r.top;
-    let top = Infinity; // no compact bar: the highest mini-player part in the lower half of the window
-    for (const el of [t, ...document.querySelectorAll(MINI)]) {
-      const q = el && el.getBoundingClientRect();
-      if (q && q.height > 0 && q.top > innerHeight / 2) top = Math.min(top, q.top);
+  // The box of Amazon's lyrics column (measured live at 1600x820: x 857-1516, y 120-566, art x 52-552, y 88-588):
+  // right edge and top from Amazon's (possibly empty, 0-wide) Stage_OverlaysContainer, bottom a bit above the art's
+  // bottom, width ~68% of the space right of the art, never over the art; then pulled up above anything of the full
+  // view (title, artist, transport, slider) that would sit under it.
+  function stageBox(st) {
+    const W = innerWidth, H = innerHeight;
+    const art = st.art && st.art.getBoundingClientRect();
+    const box = st.box && st.box.getBoundingClientRect();
+    const col = st.box && st.box.parentElement && st.box.parentElement.getBoundingClientRect();
+    const artRight = art ? art.right : col && col.width > 0 ? col.left : Math.round(W * 0.35);
+    const right = box && box.right > artRight + 160 && box.right <= W ? box.right
+      : col && col.right > artRight + 160 && col.right <= W ? col.right - 32 : W - 84;
+    const top = box && box.top >= 0 && box.top < H / 2 ? box.top : art ? art.top + 32 : Math.round(H * 0.15);
+    let bottom = art ? art.bottom - 22 : box && box.height > 100 ? box.bottom : Math.round(H * 0.7);
+    const room = right - (artRight + 48);
+    const width = Math.min(room, Math.max(320, Math.round((right - artRight) * 0.684)));
+    const left = right - width;
+    const obstacles = [STAGE_TITLE, STAGE_SUBTITLE, MINI, STAGE_MINIMIZE, '.amlt-float'].flatMap((s) => [...document.querySelectorAll(s)]);
+    for (const el of obstacles) {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height || r.right <= left || r.left >= right || r.bottom <= top || r.top >= bottom) continue;
+      if (r.top > top + 120) bottom = Math.min(bottom, r.top - 12); // below the lyrics' start: end above it
     }
-    return top === Infinity ? innerHeight - 90 : top;
+    return { left: Math.round(left), top: Math.round(top), width: Math.round(width), height: Math.round(Math.min(bottom, H - 8) - top) };
   }
-  function placeLrc() {
-    if (!lrc) return;
-    const bottom = Math.max(12, Math.round(innerHeight - miniTop() + 12));
-    lrc.panel.style.bottom = bottom + 'px';
-    lrc.panel.style.maxHeight = Math.max(160, Math.min(Math.round(innerHeight * 0.6), innerHeight - bottom - 140)) + 'px';
+  function placeLrc(st) {
+    if (!lrc || !st) return;
+    const b = stageBox(st);
+    const sig = [b.left, b.top, b.width, b.height].join();
+    if (sig === lrc.box) return;
+    lrc.box = sig;
+    const ok = b.width >= 160 && b.height >= 120;
+    Object.assign(lrc.root.style, { left: b.left + 'px', top: b.top + 'px', width: Math.max(0, b.width) + 'px', height: Math.max(0, b.height) + 'px' });
+    lrc.root.classList.toggle('amlt-stage-off', !ok);
+    // Synced: room above the first and below the last line, so the current line can sit in the middle like Amazon's.
+    const pad = lrc.synced ? Math.round(b.height * 0.4) + 'px' : '';
+    lrc.list.style.paddingTop = lrc.list.style.paddingBottom = pad;
   }
+  // Hidden while something else of Amazon's (a menu, the queue) is drawn over the spot: the topmost page element at the
+  // box's center must belong to the full view (or be one of its ancestors).
+  function coveredLrc(st) {
+    const r = lrc.root.getBoundingClientRect();
+    if (!r.width || !r.height || !document.elementsFromPoint) return false;
+    const top = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2).find((e) => !lrc.root.contains(e));
+    const anchorEl = st.box || st.art;
+    const stageRoot = (anchorEl && anchorEl.closest('section[role="region"]')) || (st.art && st.box && common(st.art, st.box));
+    return !!(top && stageRoot && !stageRoot.contains(top) && !top.contains(stageRoot));
+  }
+  function common(a, b) { for (let n = a; n; n = n.parentElement) if (n.contains(b)) return n; return null; }
 
+  // Every 200 ms while shown: still valid (full view open, same song, Amazon still without lines)? Placement, cover
+  // check, and for synced lyrics the current line (scrolled to the middle of our own scroll box unless the user just scrolled).
   function tickLrc() {
-    if (!lrc || !lrc.synced || dead) return;
+    if (!lrc || dead) return;
+    const st = stageView(), p = player();
+    if (!lrc.root.isConnected || !st || st.filled || !p || p.id !== lrc.id || findLines().length) { hideLrc(); return schedule(0); }
+    placeLrc(st);
+    lrc.root.classList.toggle('amlt-stage-covered', coveredLrc(st));
+    if (!lrc.synced) return;
     const c = readClock();
     if (!c || c.pos === null) return;
     const pos = position(c) + LRC_LEAD;
@@ -430,25 +519,27 @@
     while (lo < hi) { const mid = (lo + hi) >> 1; if (lrc.times[mid] <= pos) lo = mid + 1; else hi = mid; }
     const i = lo - 1;
     if (i === lrc.active) return;
-    if (lrc.els[lrc.active]) lrc.els[lrc.active].classList.remove('amlt-lrc-on');
+    if (lrc.els[lrc.active]) lrc.els[lrc.active].classList.remove('amlt-stage-on');
     lrc.active = i;
     const el = lrc.els[i];
     if (!el) return;
-    el.classList.add('amlt-lrc-on');
-    if (Date.now() - lrc.userAt() > 4000 && !lrc.panel.classList.contains('amlt-lrc-min')) {
-      lrc.body.scrollTo({ top: el.offsetTop - lrc.body.clientHeight / 2 + el.offsetHeight / 2, behavior: 'smooth' });
+    el.classList.add('amlt-stage-on');
+    if (Date.now() - lrc.userAt() > 4000) {
+      lrc.scroll.scrollTo({ top: el.offsetTop - lrc.scroll.clientHeight / 2 + el.offsetHeight / 2, behavior: lrc.jumped ? 'smooth' : 'auto' });
+      lrc.jumped = true;
     }
   }
-  window.addEventListener('resize', () => placeLrc());
+  window.addEventListener('resize', () => { if (lrc) placeLrc(stageView()); });
 
-  // For the popup's "This song" notice: synced | unsynced (panel shown) | hidden-synced | hidden-unsynced (closed with ×) |
-  // pending (looking it up) | none (Amazon has no lyrics and LRCLIB has no close match) | '' (Amazon has lyrics, or off).
+  // For the popup's "This song" notice: synced | unsynced (shown in the full view, or found and the full view is open) |
+  // synced-closed | unsynced-closed (found, full view closed) | pending (looking it up) | none (Amazon has no lyrics and
+  // LRCLIB has no close match) | error | '' (Amazon has lyrics, or off).
   function lrcStatus() {
     if (dead || !settings.lrclib) return '';
     if (lrc) return lrc.synced ? 'synced' : 'unsynced';
     const m = lrcId && lrcMemo.get(lrcId);
     if (!m) return lrcId ? 'pending' : '';
-    if (m.state === 'found') return 'hidden-' + (m.data.synced && m.data.synced.length ? 'synced' : 'unsynced');
+    if (m.state === 'found') return (m.data.synced && m.data.synced.length ? 'synced' : 'unsynced') + (stageView() ? '' : '-closed');
     return m.state === 'none' ? 'none' : m.state === 'error' ? 'error' : 'pending';
   }
 
@@ -466,7 +557,7 @@
     applySize();
     refreshVisibility();
     floating();
-    if (changes.lrclib) schedule(0); // on: look for the current song; off: the panel is removed by checkLrc
+    if (changes.lrclib) schedule(0); // on: look for the current song; off: our lyrics are removed by checkLrc
     // Only a new language/translator, or turning rom/trans on, can need new results; display-only changes
     // (size, original, floating button) never rescan, so they never message the background.
     if (settings.tl + '|' + settings.translator !== prev) clearAll();
@@ -474,8 +565,8 @@
   });
 
   // Popup: the current song (its button and "This song" line), and force a fresh translation.
-  // title/artist/lyrics come from the mini-player whenever a song is playing, even with Amazon's lyrics view closed.
-  // Songs shown from LRCLIB (Amazon has no lyrics) work the same way, keyed by the mini-player's track.
+  // title/artist/lyrics come from the mini-player (or the full view's title) whenever a song is playing, even with the
+  // full view closed. Songs shown from LRCLIB (Amazon has no lyrics) work the same way, keyed by the track.
   chrome.runtime.onMessage.addListener((msg, _sender, send) => {
     let els = dead ? [] : findLines();
     const amazon = els.length > 0;
@@ -483,7 +574,7 @@
     if (fromLrc) els = lrc.els;
     const texts = els.map(lineText).filter((t) => /\p{L}/u.test(t));
     const p = dead ? null : player();
-    const now = p ? { title: p.title, artist: p.artist, lyrics: lyricsState(p, amazon), lrc: lrcStatus() } : {};
+    const now = p ? { title: p.title, artist: p.artist, lyrics: lyricsState(p, amazon, stageView()), lrc: lrcStatus() } : {};
     if (!texts.length) return send(msg.type === 'song' ? now : {});
     const lines = [...new Set(texts)];
     const key = fromLrc ? lrc.key : songKey(texts);

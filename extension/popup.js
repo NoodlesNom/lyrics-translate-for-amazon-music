@@ -33,7 +33,7 @@ async function render() {
   $('counter').textContent = `Saved songs: ${saved} (Gemini ${full('g')} · Google ${full('t')}) · ${size(bytes)}`;
 }
 // "Translate this song" (selected translator, Google if Gemini can't): enabled only when the active tab shows lyric lines
-// (Amazon's lyrics view, or the LRCLIB panel). "This song" names the mini-player's song whenever one is playing.
+// (Amazon's lyrics in the full view, or LRCLIB lyrics shown there). "This song" names the mini-player's song whenever one is playing.
 let tabId = null, busy = false;
 async function findSong() {
   // In the page's floating panel (iframe) getCurrent() is the Amazon tab itself; in the toolbar popup it's undefined.
@@ -56,8 +56,8 @@ const NOTES = {
   off: 'Amazon has no lyrics (finding lyrics on LRCLIB is off)',
   synced: 'Lyrics added from LRCLIB (synced)',
   unsynced: 'Lyrics added from LRCLIB (unsynced)',
-  'hidden-synced': 'Lyrics from LRCLIB (synced), panel hidden for this song',
-  'hidden-unsynced': 'Lyrics from LRCLIB (unsynced), panel hidden for this song',
+  'synced-closed': 'Lyrics added from LRCLIB (synced) \u00b7 open the full view to see them',
+  'unsynced-closed': 'Lyrics added from LRCLIB (unsynced) \u00b7 open the full view to see them',
   pending: 'Amazon has no lyrics; looking on LRCLIB…',
   none: 'Amazon has no lyrics; none found on LRCLIB',
   error: "Amazon has no lyrics; LRCLIB didn't answer, will retry",

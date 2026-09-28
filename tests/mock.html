@@ -28,26 +28,47 @@
       <div data-testid="Box,BadgeGroup" class="css-175oi2r r-18u37iz"><div data-testid="Badge" aria-label="Lyrics available" class="css-175oi2r"><span class="css-1jxf684">LYRICS</span></div></div>
       <a href="/artists/B0DECOYART/decoy" aria-label="Decoy Artist" class="css-1jxf684">Decoy Artist</a></div>
   </div>
-  <section role="region" tabindex="-1" class="css-175oi2r r-1p0dtai r-1d2f490" style="position:absolute;inset:0;z-index:2;background:radial-gradient(circle at 20% 10%,#13324a 0,#0a0f1a 55%,#000 100%)">
-    <!-- Amazon-style top-right controls (collapse / queue / profile) that the floating button must not cover -->
-    <div id="topControls" class="css-175oi2r r-18u37iz" style="position:absolute;top:16px;right:24px;gap:12px;z-index:3">
-      <div role="button" aria-label="Collapse" style="width:40px;height:40px;border-radius:20px;background:#ffffff22"></div>
-      <div role="button" aria-label="Queue" style="width:40px;height:40px;border-radius:20px;background:#ffffff22"></div>
-      <div role="button" aria-label="Profile" style="width:40px;height:40px;border-radius:20px;background:#25d1da66"></div>
-    </div>
-    <div class="css-175oi2r r-13awgt0"><div class="css-175oi2r r-13awgt0 r-18u37iz">
-      <div class="css-175oi2r" style="padding:24px;width:320px">
-        <div class="css-175oi2r" style="width:272px;height:272px;border-radius:8px;background:linear-gradient(135deg,#25d1da55,#1a6fd155)"></div>
-        <h4 dir="auto" role="heading" aria-level="4" tabindex="0" data-testid="WidgetHeader_Primary_Related_playlists" class="css-1jxf684 r-b88u0q" style="font-family:EmberModernDisplayStd-Bold;font-size:20px;margin-top:16px;color:#fff"></h4>
-        <div dir="auto" class="css-1jxf684 r-artist" style="color:rgba(255,255,255,0.6);margin-top:4px"></div>
+  <!-- Full view ("stage"), mirroring the live overlay measured 2026-09-28 at 1600x820: an in-page overlay (not the
+       Fullscreen API) inside section[role=region]; art 500x500 at (52,88); Stage_Title at y=632, Stage_Subtitle y=674,
+       transport ~y=743; lyrics column Box,Box,Stage_OverlaysContainer (full width, h=510) > plain div (x=552, w=996) >
+       Stage_OverlaysContainer: x=857 y=120 w=659 h=446 with lyrics, EMPTY and 0 px wide at x=1516 (h=460) without.
+       Opened by the mini-player's "Enter Full Screen" button, closed by "Minimize" (top-left); closing unmounts it.
+       ?stage=0 starts closed (normal page). The art shrinks on short windows. -->
+  <section role="region" tabindex="-1" id="stage" class="css-175oi2r r-1p0dtai r-1d2f490" style="position:absolute;inset:0;z-index:2;--art:min(500px, calc(100vh - 320px))">
+    <div class="css-175oi2r r-u8s1d" style="position:absolute;inset:0;overflow:hidden">
+      <div data-testid="Stage_Background" class="css-175oi2r" style="position:absolute;inset:0;background:radial-gradient(circle at 20% 10%,#13324a 0,#0a0f1a 55%,#000 100%)"></div>
+      <button type="button" data-testid="IconButton,OpenMiniPlayerIconButton" aria-label="Minimize" class="css-175oi2r" onclick="closeStage()" style="position:absolute;top:16px;left:24px;width:40px;height:40px;border:0;border-radius:20px;background:#ffffff22;cursor:pointer"></button>
+      <!-- Amazon-style top-right controls (collapse / queue / profile) that the floating button must not cover -->
+      <div id="topControls" class="css-175oi2r r-18u37iz" style="position:absolute;top:16px;right:24px;gap:12px;z-index:3">
+        <div role="button" aria-label="Collapse" style="width:40px;height:40px;border-radius:20px;background:#ffffff22"></div>
+        <div role="button" aria-label="Queue" style="width:40px;height:40px;border-radius:20px;background:#ffffff22"></div>
+        <div role="button" aria-label="Profile" style="width:40px;height:40px;border-radius:20px;background:#25d1da66"></div>
       </div>
-      <div class="css-175oi2r r-13awgt0" style="padding:24px">
-        <div class="css-175oi2r r-13awgt0" id="overlays">
-          <div aria-hidden="true" class="css-175oi2r"><h4 dir="auto" aria-hidden="true" aria-level="4" role="heading" tabindex="-1" class="css-1jxf684" style="font-size:12px;color:rgba(255,255,255,0.3)">オーバーレイのデコイ</h4></div>
-          <div aria-hidden="true" tabindex="-1" class="css-175oi2r r-13awgt0 r-150rngu r-1rnoaur" id="scroller" style="height:calc(100vh - 150px)"></div>
+      <div class="css-175oi2r" style="position:absolute;left:52px;top:88px;width:var(--art)">
+        <div data-testid="Imagery,Stage_TileImage" role="img" aria-label="Album art" class="css-175oi2r" style="width:var(--art);height:var(--art);border-radius:8px;background:linear-gradient(135deg,#25d1da55,#1a6fd155)"></div>
+        <div class="css-175oi2r" style="margin-top:44px">
+          <div class="css-175oi2r r-18u37iz r-1awozwy" style="gap:8px">
+            <a data-testid="Stage_Title" role="link" aria-label="" href="" class="css-1jxf684" style="font-family:EmberModernDisplayStd-Bold;font-size:28px;line-height:34px;color:#fff;text-decoration:none"></a>
+            <div class="css-175oi2r"></div>
+          </div>
+          <div data-testid="Stage_Subtitle" dir="auto" class="css-1jxf684" style="margin-top:8px;font-size:18px;line-height:24px;color:rgba(255,255,255,0.6)"><a href="/artists/B0MOCKART/mock-artist" aria-label="" class="css-1jxf684" style="color:inherit;text-decoration:none"></a></div>
+          <div id="stageControls" class="css-175oi2r" style="margin-top:37px;gap:10px"></div>
         </div>
       </div>
-    </div></div>
+      <div data-testid="Box,Box,Stage_OverlaysContainer" class="css-175oi2r" style="position:absolute;left:0;right:0;top:88px;height:calc(var(--art) + 10px)">
+        <div class="css-175oi2r" style="position:absolute;top:0;bottom:0;left:calc(52px + var(--art));right:52px">
+          <div class="css-175oi2r" id="overlays" style="position:absolute;top:32px;right:32px;bottom:32px;width:66%">
+            <div aria-hidden="true" class="css-175oi2r" id="overlayDecoy"><h4 dir="auto" aria-hidden="true" aria-level="4" role="heading" tabindex="-1" class="css-1jxf684" style="font-size:12px;color:rgba(255,255,255,0.3)">オーバーレイのデコイ</h4></div>
+            <div aria-hidden="true" tabindex="-1" class="css-175oi2r r-13awgt0 r-150rngu r-1rnoaur" id="scroller" style="height:100%;overflow-y:scroll"></div>
+          </div>
+        </div>
+      </div>
+      <!-- further down the full view (not visible): a widget header that's the older song-key fallback -->
+      <div class="css-175oi2r" style="position:absolute;left:52px;bottom:0;visibility:hidden">
+        <h4 dir="auto" role="heading" aria-level="4" tabindex="0" data-testid="WidgetHeader_Primary_Related_playlists" class="css-1jxf684 r-b88u0q" style="font-family:EmberModernDisplayStd-Bold;font-size:20px;color:#fff"></h4>
+        <div dir="auto" class="css-1jxf684 r-artist" style="color:rgba(255,255,255,0.6);margin-top:4px"></div>
+      </div>
+    </div>
   </section>
   <!-- page clock (ticks every 500 ms, like Amazon's ever-changing DOM); kept outside the player bar -->
   <div id="clock" dir="auto" class="css-1jxf684" style="position:fixed;left:8px;top:4px;z-index:4;color:rgba(255,255,255,.3);font-size:10px">tick 0</div>
@@ -57,7 +78,7 @@
   <div id="miniPlayer" class="css-175oi2r r-18u37iz r-1awozwy" style="position:fixed;left:0;right:0;bottom:0;height:88px;z-index:3;background:#111;padding:0 24px;gap:16px">
     <div class="css-175oi2r r-18u37iz r-1awozwy" style="width:380px;gap:12px">
       <div class="css-175oi2r" style="width:56px;height:56px;border-radius:4px;background:#25d1da44"></div>
-      <div class="css-175oi2r r-13awgt0">
+      <div class="css-175oi2r r-13awgt0" id="miniInfo">
         <div class="css-175oi2r r-18u37iz r-1awozwy" style="gap:6px">
           <a data-testid="MiniPlayer_Title" role="link" aria-label="" href="/tracks/B0MOCK0000?do=play" class="css-1jxf684 r-link" style="color:#fff;text-decoration:none"><span dir="auto" class="css-1jxf684"></span></a>
           <div class="css-175oi2r"></div>
@@ -69,25 +90,27 @@
       <div role="button" tabindex="0" data-testid="IconButton,MiniPlayer_Follow_Follow" aria-label="Follow" class="css-175oi2r" style="width:28px;height:28px;border-radius:14px;background:#ffffff22"></div>
       <div role="button" tabindex="0" data-testid="IconButton,MiniPlayer_ContextMenu" aria-label="More options" class="css-175oi2r" style="width:28px;height:28px;border-radius:14px;background:#ffffff22"></div>
     </div>
-    <div class="css-175oi2r r-13awgt0 r-1awozwy" style="gap:8px">
-      <div class="css-175oi2r r-18u37iz r-1awozwy" style="gap:10px">
+    <div class="css-175oi2r r-13awgt0 r-1awozwy" style="gap:8px" id="miniCenter">
+      <div class="css-175oi2r r-18u37iz r-1awozwy" style="gap:10px" id="transport">
         <div role="button" tabindex="0" data-testid="IconButton,MiniPlayer_PreviousButton" aria-label="Previous" class="css-175oi2r" style="width:28px;height:28px;border-radius:14px;background:#ffffff22"></div>
         <div role="button" tabindex="0" data-testid="IconButton,MiniPlayer_Pause" aria-label="Pause" class="css-175oi2r" style="width:36px;height:36px;border-radius:18px;background:#ffffff44"></div>
         <div role="button" tabindex="0" data-testid="IconButton,MiniPlayer_NextButton" aria-label="Next" class="css-175oi2r" style="width:28px;height:28px;border-radius:14px;background:#ffffff22"></div>
       </div>
-      <div data-testid="Slider,MiniPlayer_ProgressSlider" class="css-175oi2r" style="align-self:stretch">
+      <div data-testid="Slider,MiniPlayer_ProgressSlider" class="css-175oi2r" style="align-self:stretch" id="sliderWrap">
         <div role="slider" tabindex="0" aria-label="Playback 0:00 of 0:00" class="css-175oi2r" style="height:4px;background:#ffffff33;border-radius:2px"><div class="css-175oi2r" style="height:4px;width:0;background:#25d1da"></div></div>
       </div>
     </div>
-    <div class="css-175oi2r r-18u37iz r-1awozwy" style="width:120px;justify-content:flex-end">
+    <div class="css-175oi2r r-18u37iz r-1awozwy" style="width:120px;justify-content:flex-end;gap:8px">
       <div role="button" tabindex="0" data-testid="IconButton,MiniPlayer_PlayQueueButton" aria-label="Play queue" class="css-175oi2r" style="width:28px;height:28px;border-radius:6px;background:#ffffff22"></div>
+      <button type="button" data-testid="IconButton" aria-label="Enter Full Screen" class="css-175oi2r" onclick="openStage()" style="width:28px;height:28px;border:0;border-radius:6px;background:#ffffff22;cursor:pointer"></button>
     </div>
   </div>
 </div>
 <script>
   const params = new URLSearchParams(location.search);
-  if (!params.has('notestid')) document.getElementById('overlays').setAttribute('data-testid', 'Stage_OverlaysContainer');
-  document.getElementById('overlays').removeAttribute('id');
+  const overlays = document.getElementById('overlays'), decoy = document.getElementById('overlayDecoy'), scroller = document.getElementById('scroller');
+  if (!params.has('notestid')) overlays.setAttribute('data-testid', 'Stage_OverlaysContainer');
+  overlays.removeAttribute('id'); decoy.removeAttribute('id');
   const SONGS = {
     0: { title: 'No Lyrics (Test)', artist: 'Mock Artist', lines: [] },
     1: { title: 'Paper Lantern (Test)', artist: 'Mock Artist', lines: [
@@ -133,25 +156,68 @@
     row.append(h4, spacer);
     return row;
   }
-  function renderList(lines) {                      // like React mounting a new list
-    if (params.get('view') === 'closed') { document.getElementById('scroller').replaceChildren(); return document.createElement('div'); }
+  // Like React mounting a new list. A song without lyrics leaves Stage_OverlaysContainer EMPTY (no children) and
+  // collapsed to 0 px width at the right edge, as on the live site.
+  function renderList(lines) {
     const list = document.createElement('div');
     list.className = 'css-175oi2r';
     list.setAttribute('style', 'padding-top: 191px; padding-bottom: 191px;');
     list.append(...lines.map(makeRow));
-    document.getElementById('scroller').replaceChildren(list);
+    if (lines.length) {
+      overlays.style.width = '66%'; overlays.style.bottom = '32px';
+      overlays.replaceChildren(decoy, scroller); scroller.replaceChildren(list);
+    } else {
+      scroller.replaceChildren(); overlays.replaceChildren();
+      overlays.style.width = '0px'; overlays.style.bottom = '18px';
+    }
     return list;
   }
+  window.addAmazonLines = (lines) => renderList(lines); // Amazon's lyrics showing up late for the current song
   // Mini-player metadata, like React re-rendering the same nodes. ?badge=on|off|late overrides the song's own lyrics badge
   // (late: it appears ?badgeDelay= ms, default 1000, after the title); ?mini=0 removes the mini-player; ?hdbadge=1 adds
   // another (non-lyrics) badge to the group.
   const mini = document.getElementById('miniPlayer');
-  if (params.get('mini') === '0') mini.remove();
   const q = (sel) => mini.querySelector(sel);
+  // Direct references: while the full view is open these nodes may be detached (title) or moved into the stage (controls).
+  const miniTitleEl = q('[data-testid="MiniPlayer_Title"]'), miniArtistEl = q('a[href^="/artists/"]');
+  const sliderEl = q('[role="slider"]'), pauseEl = q('[data-testid="IconButton,MiniPlayer_Pause"]');
+  const miniInfo = document.getElementById('miniInfo'), infoNext = miniInfo.nextElementSibling;
+  const transport = document.getElementById('transport'), sliderWrap = document.getElementById('sliderWrap'), miniCenter = document.getElementById('miniCenter');
+  const stage = document.getElementById('stage'), stageParent = stage.parentNode, stageNext = stage.nextSibling;
+  const stageControls = document.getElementById('stageControls');
+  const widgetTitle = stage.querySelector('[data-testid="WidgetHeader_Primary_Related_playlists"]'), widgetArtist = stage.querySelector('.r-artist');
+  const stTitle = stage.querySelector('[data-testid="Stage_Title"]'), stArtist = stage.querySelector('[data-testid="Stage_Subtitle"] a');
+  // Mini-player while the full view is open (?stagemini=): gone (default: its title/artist cluster is unmounted, the bar
+  // hidden, Previous/Pause/Next and the progress slider sit under the full view's title), hidden (same, but the title
+  // stays in the DOM, hidden, with its badge slot), bar (the whole bar stays visible at the bottom, title included).
+  // ?stageslider=generic: in the full view the slider has no MiniPlayer_ProgressSlider testid (only its aria-label).
+  const stageMini = params.get('stagemini') || 'gone';
+  function stageMiniMode(open) {
+    if (!mini.isConnected) return;
+    if (open && stageMini !== 'bar') {
+      mini.style.display = 'none';
+      stageControls.append(transport, sliderWrap);
+      if (stageMini === 'gone') miniInfo.remove();
+      if (params.get('stageslider') === 'generic') sliderWrap.removeAttribute('data-testid');
+    } else {
+      mini.style.display = '';
+      miniCenter.append(transport, sliderWrap);
+      if (!miniInfo.isConnected) infoNext.before(miniInfo);
+      sliderWrap.setAttribute('data-testid', 'Slider,MiniPlayer_ProgressSlider');
+    }
+  }
+  // ?stageclose=hide: closing leaves the full view mounted, slid down out of the window and faded out (instead of unmounting).
+  window.openStage = () => { if (!stage.isConnected) stageParent.insertBefore(stage, stageNext); stage.style.transform = stage.style.opacity = ''; stageMiniMode(true); };
+  window.closeStage = () => {
+    if (params.get('stageclose') === 'hide' && stage.isConnected) { stage.style.transform = 'translateY(100%)'; stage.style.opacity = '0'; }
+    else stage.remove();                             // React unmounts the full view
+    stageMiniMode(false);
+  };
+  if (params.get('mini') === '0') mini.remove();     // nothing playing at all: no mini-player, no full view
   let badgeTimer = 0;
   window.showBadge = (lyrics) => {                   // BadgeGroup (with the lyrics badge) or the empty placeholder
-    const title = q('[data-testid="MiniPlayer_Title"]');
-    if (!title) return;
+    const title = miniTitleEl;
+    if (!mini.isConnected) return;
     const slot = title.nextElementSibling;
     const hd = params.has('hdbadge');
     let el;
@@ -169,15 +235,20 @@
   function setMeta(s) {
     const title = params.get('title') || s.title;    // ?title= gives the same lines a different song identity (cache tests)
     s = { ...s, artist: params.get('artist') || s.artist };  // ?artist= (real-API smoke test only)
-    document.querySelector('[data-testid="WidgetHeader_Primary_Related_playlists"]').textContent = title;
-    document.querySelector('.r-artist').textContent = s.artist;
+    widgetTitle.textContent = title;                  // refs: the full view may be unmounted
+    widgetArtist.textContent = s.artist;
     if (!params.has('nomedia') && 'mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title, artist: s.artist });
-    const t = q('[data-testid="MiniPlayer_Title"]');
-    if (t) {
+    const asin = params.get('asin') || 'B0MOCK' + String(current).padStart(4, '0');
+    // Full view title: href is an album link by default (no ASIN); ?stagehref=tracks gives it the /tracks/<ASIN> link.
+    stTitle.setAttribute('aria-label', title); stTitle.textContent = title;
+    stTitle.setAttribute('href', params.get('stagehref') === 'tracks' ? '/tracks/' + asin : '/albums/B0MOCKALB' + String(current).padStart(2, '0'));
+    stArtist.setAttribute('aria-label', s.artist); stArtist.textContent = s.artist;
+    const t = miniTitleEl;
+    if (mini.isConnected) {
       t.setAttribute('aria-label', title);
-      t.setAttribute('href', '/tracks/' + (params.get('asin') || 'B0MOCK' + String(current).padStart(4, '0')) + '?do=play');
+      t.setAttribute('href', '/tracks/' + asin + '?do=play');
       t.firstChild.textContent = title;
-      const a = q('a[href^="/artists/"]');
+      const a = miniArtistEl;
       a.setAttribute('aria-label', s.artist);
       a.firstChild.textContent = s.artist;
       clearTimeout(badgeTimer);
@@ -200,15 +271,14 @@
     pause() { this.pos = this.now(); this.playing = false; this.render(); },
     play() { this.t0 = performance.now(); this.playing = true; this.render(); },
     render() {
-      const sl = q('[role="slider"]');
-      if (!sl) return;
+      const sl = sliderEl;
       const x = this.now();
       const set = (a, v) => { if (sl.getAttribute(a) !== v) sl.setAttribute(a, v); };
       set('aria-label', 'Playback ' + fmt(x) + ' of ' + fmt(this.dur));
       if (sliderMode === 'label') { sl.removeAttribute('aria-valuenow'); sl.removeAttribute('aria-valuemax'); }
       else { const k = sliderMode === 'ms' ? 1000 : 1; set('aria-valuenow', String(Math.floor(x) * k)); set('aria-valuemax', String(this.dur * k)); }
       sl.firstChild.style.width = (this.dur ? (x / this.dur) * 100 : 0) + '%';
-      const pb = q('[data-testid="IconButton,MiniPlayer_Pause"]');
+      const pb = pauseEl;
       if (pb.getAttribute('aria-label') !== (this.playing ? 'Pause' : 'Play')) pb.setAttribute('aria-label', this.playing ? 'Pause' : 'Play');
     },
   };
@@ -240,6 +310,7 @@
   new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => { if (n.classList && n.classList.contains('amlt')) window.amltInserts++; })))
     .observe(document.body, { childList: true, subtree: true });
   setSong(Number(params.get('song') || 1));
+  if (params.get('stage') === '0' || params.get('view') === 'closed' || params.get('mini') === '0') closeStage(); else openStage();
 </script>
 </body>
 </html>

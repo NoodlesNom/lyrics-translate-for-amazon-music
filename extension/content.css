@@ -45,29 +45,30 @@
   font-weight: 400;
 }
 
-/* LRCLIB panel: lyrics for songs Amazon has none for. Fixed above the player bar at the right edge (content.js sets
-   bottom/max-height from the bar's position). Lines are dim, the current one white, like Amazon's lyrics view. */
-.amlt-lrc {
-  position: fixed; right: 20px; bottom: 104px; z-index: 2147482999;
-  display: flex; flex-direction: column; box-sizing: border-box;
-  width: 360px; max-width: calc(100vw - 40px); max-height: 60vh;
-  background: rgba(15, 17, 17, 0.94); color: #fff; border: 1px solid #3a3f41; border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-  font-family: EmberModernDisplayStd-Bold, "Amazon Ember", system-ui, sans-serif; text-align: left;
+/* LRCLIB lyrics (songs Amazon has none for), shown only in Amazon's full view, in the spot where Amazon's own lyrics
+   appear. content.js positions this fixed box over Amazon's (empty) lyrics column, right of the art. Styled like Amazon's
+   lyric lines: EmberModernDisplayStd-Bold 24px, right-aligned, dim lines and a white current line, ~72px per line, no
+   panel chrome. Lines holding an .amlt block get the shared size/translation rules above, exactly like Amazon's lines. */
+.amlt-stage {
+  position: fixed; left: 0; top: 0; width: 0; height: 0; z-index: 2147482990;
+  display: flex; flex-direction: column; box-sizing: border-box; margin: 0; padding: 0;
+  background: none; border: 0; box-shadow: none; color: #fff; text-align: right;
 }
-.amlt-lrc-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 14px; border-bottom: 1px solid #2a2e30;
-  font: 600 13px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif; }
-.amlt-lrc-src { margin-right: auto; font-weight: 400; font-size: 11px; color: rgba(255, 255, 255, 0.5); }
-.amlt-lrc-btn { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent;
-  color: rgba(255, 255, 255, 0.7); font: 16px/24px system-ui, sans-serif; cursor: pointer; }
-.amlt-lrc-btn:hover, .amlt-lrc-btn:focus-visible { background: #2a2e30; color: #fff; }
-.amlt-lrc-body { overflow-y: auto; padding: 10px 14px 28px; scrollbar-width: thin; overscroll-behavior: contain; }
-.amlt-lrc.amlt-lrc-min .amlt-lrc-body { display: none; }
-.amlt-lrc.amlt-lrc-min .amlt-lrc-head { border-bottom: 0; }
-.amlt-lrc-line { padding: 5px 0; font-size: calc(20px * var(--amlt-scale, 1)); line-height: 1.3; font-weight: 700;
-  color: rgba(255, 255, 255, 0.35); white-space: pre-wrap; overflow-wrap: break-word; transition: color 0.2s; }
-.amlt-lrc-line.amlt-lrc-on, .amlt-lrc-plain .amlt-lrc-line { color: #fff; }
-/* The shared lyric-line rules above are sized for Amazon's big lyrics view; the panel uses 20px / 14px. */
-.amlt-lrc .amlt-lrc-line:has(> .amlt) { font-size: calc(20px * var(--amlt-scale, 1)) !important; line-height: 1.3 !important; }
-.amlt-lrc .amlt-rom, .amlt-lrc .amlt-trans { font-size: calc(14px * var(--amlt-scale, 1)); }
-.amlt-lrc .amlt.amlt-main:has(> .amlt-trans:not(.amlt-off)) > .amlt-trans { font-size: calc(20px * var(--amlt-scale, 1)); }
+.amlt-stage.amlt-stage-off, .amlt-stage.amlt-stage-covered { visibility: hidden; }
+.amlt-stage-scroll {
+  position: relative; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
+  scrollbar-width: none; -ms-overflow-style: none; overscroll-behavior: contain;
+}
+.amlt-stage-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.amlt-stage-list { box-sizing: border-box; }
+.amlt-stage-line {
+  box-sizing: border-box; min-height: 72px; padding: 20px 0; margin: 0;
+  font-family: EmberModernDisplayStd-Bold, "Amazon Ember Display", "Amazon Ember", "Helvetica Neue", Arial, system-ui, sans-serif;
+  font-size: 24px; font-weight: 700; line-height: 1.3; letter-spacing: 0.2px; text-align: right;
+  color: rgba(255, 255, 255, 0.3); white-space: pre-wrap; overflow-wrap: break-word; transition: color 0.25s;
+}
+.amlt-stage-line.amlt-stage-on, .amlt-stage-plain .amlt-stage-line { color: rgb(255, 255, 255); }
+.amlt-stage-credit {
+  flex: 0 0 auto; padding-top: 6px; font: 400 11px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: rgba(255, 255, 255, 0.35); letter-spacing: normal; text-align: right; pointer-events: none;
+}
