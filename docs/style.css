@@ -23,6 +23,8 @@ nav a:hover { color: var(--text); }
 .btn.primary { background: var(--accent); color: #062326; border-color: var(--accent); }
 .btn[aria-disabled="true"] { opacity: .75; cursor: default; }
 .note { font-size: 13px; color: var(--muted); }
+.note.versions { margin: 0 0 6px; }
+.note.versions .ver { display: block; color: #cdd6da; font-variant-numeric: tabular-nums; }
 .shot { margin-top: 40px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); box-shadow: 0 30px 80px rgba(0, 0, 0, .55); }
 section { padding: 64px 0; border-top: 1px solid var(--line); }
 section h2 { font-size: 32px; margin: 0 0 10px; letter-spacing: -.01em; }

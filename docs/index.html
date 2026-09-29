@@ -32,6 +32,7 @@
       <a class="btn primary" href="https://microsoftedge.microsoft.com/addons/detail/lyrics-translate-romanize-for-amazon-music/jjfhmmdjbkcamelimddcogoopaljflff">Get it on Microsoft Edge Add-ons</a>
       <a class="btn" href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest">Download ZIP (load unpacked)</a>
     </div>
+    <p class="note versions"><span id="versions" class="ver" hidden></span>Store updates can take up to a week because Microsoft reviews each one. The GitHub version is always the newest.</p>
     <p class="note">Free and open source (MIT). No account, no analytics. Not affiliated with Amazon.</p>
     <div class="shot"><img src="img/1-translated.png" width="1280" height="800" alt="The Amazon Music-style lyrics view on a demo page: each invented lyric line is shown as a large English translation with a small romanization underneath."></div>
     <p class="note">All screenshots use a local demo page with invented lyric lines.</p>
@@ -54,7 +55,7 @@
       <div class="card"><div class="icon">⤒</div><h3>Translation as the main line</h3>
         <p>By default the translation replaces the original as the big, bold line, with the romanization underneath. Turn on <b>Original lyrics</b> in the popup to keep the original big and show the extras in small text.</p></div>
       <div class="card"><div class="icon">◉</div><h3>Floating button</h3>
-        <p>A small round button in the top-right corner of the player opens the popup as a panel right on the page. Click outside it or press <kbd>Esc</kbd> to close it, or hide the button in the popup.</p></div>
+        <p>A small round button in the top-right corner of the player opens the popup as a panel right on the page. Click outside it or press <kbd>Esc</kbd> to close it, or hide the button in the popup. With Gemini selected, a small dot on it shows the Gemini status, like the popup.</p></div>
       <div class="card"><div class="icon">⟳</div><h3>Per-song cache</h3>
         <p>Results are saved per song, translator and language: up to 2000 songs (400 lines each). Replays are instant and make no requests. When the cache is full, the least recently played songs are removed first.</p></div>
       <div class="card"><div class="icon">✓</div><span class="tag">Improved in 1.3</span><h3>Smarter language check</h3>
@@ -72,6 +73,7 @@
         <ul class="ticks">
           <li>The current line is highlighted and follows playback, seeks and pauses.</li>
           <li>Translation and romanization work just like on Amazon's lyrics.</li>
+          <li>If LRCLIB only has a romanization (romaji, pinyin, Korean romanization), it becomes the small romanization line under the translation, and a copy in the original script wins when there is one. With Gemini, <b>Original lyrics</b> shows a marked guess (≈) of the original script.</li>
           <li>The popup's <b>This song</b> line shows the title, artist and where the lyrics came from.</li>
           <li>Only the song's title, artist and duration are sent to lrclib.net. Turn it off anytime with <b>Find lyrics when Amazon has none</b>.</li>
         </ul></div>
@@ -89,7 +91,7 @@
     <div class="split rev">
       <div class="media"><img src="img/4-floating-panel.png" width="1280" height="800" alt="The floating button in the top-right corner has opened the settings panel on the page, next to translated demo lyrics."></div>
       <div><h3>Settings without leaving the player</h3>
-        <p>The floating button opens the full popup as an in-page panel, handy in full-screen or when the toolbar is hidden. It's the same popup, with the same live status lines.</p></div>
+        <p>The floating button opens the full popup as an in-page panel, handy in full-screen or when the toolbar is hidden. It's the same popup, with the same live status lines, and while Gemini is the translator the button's corner dot shows its status at a glance (green: working).</p></div>
     </div>
   </div>
 </section>
@@ -99,7 +101,7 @@
     <h2>What's new</h2>
     <p class="sub">Recent versions, newest first. Full history and downloads in the <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases">releases</a>.</p>
     <div class="changelog">
-      <div class="card"><h3>1.3.6</h3><p>Romanized LRCLIB lyrics now show as the romanization line; a Japanese-script copy is preferred when LRCLIB has one. Korean and Chinese romanizations are recognized too; with Gemini, the Original lyrics line shows a marked guess of the original script. Tidier popup checkboxes, and the floating button shows the Gemini status dot.</p></div>
+      <div class="card"><h3>1.3.6</h3><p>LRCLIB lyrics that are only a romanization (romaji, Korean romanization or pinyin) now show as the romanization line under the translation, and a copy in the original script is preferred when LRCLIB has one. With Gemini, the Original lyrics line shows a marked guess (≈) of the original script. Tidier popup checkboxes, and the floating button shows the Gemini status dot.</p></div>
       <div class="card"><h3>1.3.5</h3><p>Fixed: after jumping ahead in a song, the highlighted line could scroll off screen (worse with big text). It now comes straight back to the middle of the lyrics. Popup fits without scroll bars again.</p></div>
       <div class="card"><h3>1.3.4</h3><p>First public release with LRCLIB lyrics and the smarter language check (1.3.0–1.3.3 were test builds, released together here). Copies installed with Load unpacked now tell you when a new version is out (a NEW badge and a download link in the popup) and get a <b>Check for updates</b> button. Store copies update automatically, as before.</p></div>
       <div class="card"><h3>1.3.3</h3><p><i>Test build, released in 1.3.4.</i> Smarter language check: songs already in your language never go to Gemini, even with look-alike characters, and mostly English songs only get their few foreign lines translated.</p></div>
@@ -119,8 +121,8 @@
       <dl class="controls">
         <dt>Translate to</dt><dd>Target language: 23 languages, including English, Spanish, French, German, Japanese, Korean, Chinese (Simplified and Traditional), Arabic, Hindi and more.</dd>
         <dt>Translator</dt><dd><b>Gemini (needs key)</b> or <b>Google Translate</b>. Gemini is picked automatically once you save a key.</dd>
-        <dt>Gemini status dot</dt><dd><span class="dot g"></span>Gemini working, last reply 2 min ago · <span class="dot a"></span>Using Google (quota hit, timed out, error or unexpected reply) · <span class="dot r"></span>Invalid key · <span class="dot n"></span>No key, not used yet, or Google selected.</dd>
-        <dt>This song</dt><dd>The current song's title and artist, its detected language(s) and state, for example "Japanese + English · Translated with Gemini (from cache)", "English · Already in English, no translation needed" or "Translating…". For songs Amazon has no lyrics for, a second line says where the lyrics came from: "Lyrics added from LRCLIB (synced)", or "Amazon has no lyrics; none found on LRCLIB".</dd>
+        <dt>Gemini status dot</dt><dd><span class="dot g"></span>Gemini working, last reply 2 min ago · <span class="dot a"></span>Using Google (quota hit, timed out, error or unexpected reply) · <span class="dot r"></span>Invalid key · <span class="dot n"></span>No key, not used yet, or Google selected. While Gemini is selected, the floating button shows the same dot.</dd>
+        <dt>This song</dt><dd>The current song's title and artist, its detected language(s) and state, for example "Japanese + English · Translated with Gemini (from cache)", "English · Already in English, no translation needed" or "Translating…". For songs Amazon has no lyrics for, a second line says where the lyrics came from: "Lyrics added from LRCLIB (synced)", or "Amazon has no lyrics; none found on LRCLIB". If LRCLIB only had a romanization, it says so, for example "LRCLIB lyrics were already romanized (Japanese) · original script guessed by Gemini".</dd>
         <dt>Translate this song</dt><dd>Translates the open song again with the selected translator and stops it being skipped.</dd>
         <dt>Text size</dt><dd>Small (85%), Default, Large (120%) or Extra large (145%).</dd>
         <dt>Toggles</dt><dd>Under <b>Show</b>: Romanization, Translation, Original lyrics and Floating button. Below them, <b>Find lyrics when Amazon has none</b> (on by default; turn it off and nothing is ever sent to LRCLIB).</dd>
@@ -149,7 +151,7 @@
     <h2>Privacy</h2>
     <div class="grid five">
       <div class="card"><h3>No data collection</h3><p>The developer collects nothing. There are no analytics, no trackers, no accounts and no servers of our own.</p></div>
-      <div class="card"><h3>What is sent, and where</h3><p>Only the lyric lines on screen are sent to Google Translate, and to Google Gemini if you added your own key, only to translate or romanize them. No cookies, song history or other data.</p></div>
+      <div class="card"><h3>What is sent, and where</h3><p>Only the lyric lines on screen are sent to Google Translate, and to Google Gemini if you added your own key, only to translate or romanize them (or, for lyrics that are already romanized, for Gemini to guess the original script). No cookies, song history or other data.</p></div>
       <div class="card"><h3>LRCLIB, only when needed</h3><p>Only for songs Amazon has no lyrics for, the song's title, artist and duration are sent to <a href="https://lrclib.net">lrclib.net</a> to find lyrics. No personal data, no account. Switch it off with <b>Find lyrics when Amazon has none</b>.</p></div>
       <div class="card"><h3>Update check (unpacked only)</h3><p>Copies installed with Load unpacked ask GitHub's public API for the latest version number about once a day and when you press <b>Check for updates</b>. Nothing personal is sent. Store copies never do.</p></div>
       <div class="card"><h3>Stored in your browser</h3><p>Your Gemini key, the translation cache and the LRCLIB lyrics cache stay in local extension storage; your settings are in sync storage. Removing the extension clears them.</p></div>
@@ -191,5 +193,21 @@
     <p><a href="privacy.html">Privacy policy</a> · <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music">Source code</a> · <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/issues">Support and feedback (GitHub issues)</a></p>
   </div>
 </footer>
+<script>
+// Version line under the install buttons: versions.json is on this same site (updated by a GitHub Actions workflow every
+// 6 hours and on each release), so visitors' browsers make no third-party requests. If it can't load, only the note shows.
+fetch('versions.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : Promise.reject(r.status))).then((v) => {
+  const ok = (x) => typeof x === 'string' && /^\d+(\.\d+){1,3}$/.test(x);
+  const parts = [];
+  if (ok(v.store)) parts.push('Store: v' + v.store);
+  if (ok(v.github)) parts.push('GitHub: v' + v.github);
+  if (!parts.length) return;
+  const el = document.getElementById('versions');
+  el.textContent = parts.join(' \u00b7 ');
+  const at = new Date(v.checked);
+  if (!isNaN(at)) el.title = 'Checked ' + at.toLocaleString();
+  el.hidden = false;
+}).catch(() => {});
+</script>
 </body>
 </html>
