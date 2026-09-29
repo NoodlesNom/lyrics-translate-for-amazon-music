@@ -1,5 +1,7 @@
 // v1.3.6: romanized LRCLIB lyrics (Japanese romaji, Korean romanization, Chinese pinyin). lrclib.net, Google Translate and
 // Gemini are MOCKED (placeholder key); every lyric line below is invented test text written for these tests (no real lyrics).
+// 1.3.6 fix after the live check: Google returns romaji unchanged, so romanized Japanese is translated from the local
+// hiragana guess (sl=ja); when nothing translates, the romanization is the main line, shown once.
 // Covers: detection (romanized songs flagged, invented English/Spanish/Italian/Indonesian songs not), preferring a copy in
 // the original script from the same LRCLIB results, the romanized-only fallback (romanization slot, translation as the
 // main line, "Original lyrics" never repeating the romaji, toggles), Gemini's language verdict and original-script guess,
@@ -47,6 +49,7 @@ const GET = {
   'Blue Kite (Test)': rec(141, 'Blue Kite (Test)', A, 200, { synced: lrc(C.jaWapuro) }),            // romaji; Gemini will say Korean
   'Tea Garden (Test)': rec(151, 'Tea Garden (Test)', A, 200, { synced: lrc(C.jaWapuro) }),          // romaji; Gemini will say "none"
   'Metro Sea (Test)': rec(161, 'Metro Sea (Test)', A, 200, { synced: lrc(C.en[0]) }),               // English
+  'Echo Lane (Test)': rec(171, 'Echo Lane (Test)', A, 200, { synced: lrc(C.jaWapuro) }),            // romaji; Google translates nothing
 };
 const SEARCH = {
   'Paper Crane (Test)': [rec(101, 'Paper Crane (Test)', A, 200, { synced: lrc(C.ja) }),
@@ -58,17 +61,24 @@ const SEARCH = {
   'Harbor Song (Test)': [rec(121, 'Harbor Song (Test)', A, 200, { synced: lrc(C.ko) })],
 };
 
-// Google (mocked): Japanese script lines → translation + romanization; romanized lines → "EN: <line>"; English unchanged.
+// Google (mocked) behaves like the real one did in the 1.3.6 live check: Japanese script lines → translation +
+// romanization; romanized lines (romaji, Korean romanization, pinyin) come back UNCHANGED whatever the source language
+// (auto-detected or named); only Japanese in kana, sent with sl=ja, is translated (the local hiragana guess, HIRA_T:
+// hiragana → an invented English sentence, filled once the service worker is up). googleHira = false: Google translates
+// nothing at all (every line echoed). English lines come back unchanged.
 const JA_T = Object.fromEntries(JA_NATIVE.map((l, i) => [l, [`Native translation ${i + 1}`, C.ja[i]]]));
-const ROM = new Set([...C.ja, ...C.jaWapuro, ...C.ko, ...C.zhTones].filter((l) => !/^[A-Z][a-z]+ /.test(l) || /^[a-z]/.test(l)));
-let gReqs = [];
+const MEAN = Object.fromEntries([...C.ja, ...C.jaWapuro].filter((l) => l !== C.ja[4]).map((l, i) => [l, `Translated sentence ${i + 1}`]));
+let HIRA_T = {}, googleHira = true;
+let gReqs = [], gSl = [];
 async function onGoogle(route) {
   const q = new URLSearchParams(route.request().postData() || '').get('q');
-  gReqs.push(q);
+  const sl = new URL(route.request().url()).searchParams.get('sl');
   const ls = q.split('\n|\n');
-  if (ls.every((l) => JA_T[l])) return route.fulfill({ contentType: 'application/json', body: JSON.stringify([[[ls.map((l) => JA_T[l][0]).join('\n|\n'), q, null, null], [null, null, null, ls.map((l) => JA_T[l][1]).join(' | ')]], null, 'ja']) });
-  const t = ls.map((l) => (/^[a-zǎǐǒǔěāīūēōáíóúéàìòùè]/.test(l) ? 'EN: ' + l : l));
-  route.fulfill({ contentType: 'application/json', body: JSON.stringify([[[t.join('\n|\n'), q, null, null]], null, ls.some((l) => /^[a-z]/.test(l)) ? 'ja' : 'en']) });
+  gReqs.push(q);
+  gSl.push({ sl, n: ls.length, kana: ls.filter((l) => /[\u3040-\u309f]/.test(l)).length, romaji: ls.filter((l) => MEAN[l]).length });
+  if (ls.some((l) => /[^\x00-\x7f]/.test(l) && !/^[a-z]/.test(l)) && ls.every((l) => JA_T[l])) return route.fulfill({ contentType: 'application/json', body: JSON.stringify([[[ls.map((l) => JA_T[l][0]).join('\n|\n'), q, null, null], [null, null, null, ls.map((l) => JA_T[l][1]).join(' | ')]], null, 'ja']) });
+  const t = ls.map((l) => (sl === 'ja' && googleHira && HIRA_T[l]) || l);
+  route.fulfill({ contentType: 'application/json', body: JSON.stringify([[[t.join('\n|\n'), q, null, null]], null, sl !== 'auto' ? sl : ls.some((l) => /^[a-z]/.test(l)) ? 'ja' : 'en']) });
 }
 let lReqs = [];
 async function onLrclib(route) {
@@ -124,8 +134,10 @@ const stageLines = (page) => page.evaluate(() => [...document.querySelectorAll('
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   const song = (title, asin) => `song=9&title=${encodeURIComponent(title)}&asin=${asin}&stagehref=tracks&start=1`;
-  const go = async (qs, wait = 4000) => { lReqs = []; gReqs = []; gemReqs = []; await page.goto('https://music.amazon.com/?' + qs); await page.waitForTimeout(wait); };
+  const go = async (qs, wait = 4000) => { lReqs = []; gReqs = []; gSl = []; gemReqs = []; await page.goto('https://music.amazon.com/?' + qs); await page.waitForTimeout(wait); };
   const waitBlocks = (n) => page.waitForFunction((n) => document.querySelectorAll('.amlt-stage .amlt-trans').length >= n, n, { timeout: 8000 }).catch(() => {});
+
+  HIRA_T = Object.fromEntries(await sw.evaluate((ls) => ls.map((l) => toHiragana(l)), Object.keys(MEAN)).then((h) => h.map((x, i) => [x, Object.values(MEAN)[i]])));
 
   // ---------- 1. Detection (the service worker's detectRoman) ----------
   const det = (lines) => sw.evaluate((lines) => detectRoman(lines), lines);
@@ -176,13 +188,14 @@ const stageLines = (page) => page.evaluate(() => [...document.querySelectorAll('
   const romL = L.filter((l) => l.roman), enL = L.find((l) => l.text === C.ja[4]);
   check('romaji only: no native copy within 3 s (the 50 s-off one is ignored) → the romaji copy (id 111), get + search', L.length === 8 && L[0].text === C.ja[0] && lReqs.map((r) => r.path).join() === '/api/get,/api/search', JSON.stringify(lReqs.map((r) => r.path)));
   check('romaji only: the 7 romaji lines are marked romanized, the English line is not', romL.length === 7 && enL && !enL.roman && !enL.rblock, JSON.stringify(L.map((l) => l.roman)));
-  check('romaji only: romaji shown IN THE ROMANIZATION SLOT (18px, under the translation), translation (from the romaji) is the 28px main line',
-    romL.every((l) => l.rblock && l.rom.text === l.text && l.rom.shown && !l.rom.big && l.rom.size === '18px' && l.trans.text === 'EN: ' + l.text && l.trans.big && l.trans.size === '28px' && l.trans.top < l.rom.top),
+  check('romaji only (Google echoes romaji, translates hiragana with sl=ja): romaji shown IN THE ROMANIZATION SLOT (18px, under the translation), a REAL translation is the 28px main line',
+    romL.every((l) => l.rblock && l.rom.text === l.text && l.rom.shown && !l.rom.big && l.rom.size === '18px' && l.trans && l.trans.text === MEAN[l.text] && l.trans.big && l.trans.size === '28px' && l.trans.top < l.rom.top),
     JSON.stringify(romL[0]));
   check('romaji only: the romaji text itself is not shown again as the original (line text at 0px; each line shows exactly [translation, romaji])',
-    romL.every((l) => l.lineSize === '0px' && JSON.stringify(l.shownTexts) === JSON.stringify(['EN: ' + l.text, l.text])), JSON.stringify(romL[0].shownTexts));
+    romL.every((l) => l.lineSize === '0px' && JSON.stringify(l.shownTexts) === JSON.stringify([MEAN[l.text], l.text])), JSON.stringify(romL[0].shownTexts));
   check('romaji only: the English line stays an ordinary line (28px original, no translation, no romanization)', enL.lineSize === '28px' && !enL.trans && !enL.rom, JSON.stringify(enL));
-  check('romaji only: Google asked once for all romaji lines (+ the English line in the same Latin batch), romanization never asked of Google as "original"', gReqs.length === 1, `google=${gReqs.length}`);
+  check('romaji only: Google gets the 7 romaji lines as their HIRAGANA guess with sl=ja (never the romaji itself), the English line separately with sl=auto',
+    gSl.length === 2 && gSl.some((r) => r.sl === 'ja' && r.n === 7 && r.kana === 7 && r.romaji === 0) && gSl.some((r) => r.sl === 'auto' && r.n === 1 && r.romaji === 0), JSON.stringify(gSl));
   await page.screenshot({ path: __dirname + '/fullview-romanized.png' });
   await setSettings({ orig: true }); await page.waitForTimeout(400);
   await page.screenshot({ path: __dirname + '/fullview-romanized-orig.png' });
@@ -190,10 +203,10 @@ const stageLines = (page) => page.evaluate(() => [...document.querySelectorAll('
   let r0 = L.find((l) => l.text === C.ja[0]);
   check('"Original lyrics" ON, Japanese without Gemini: the original slot shows a HIRAGANA GUESS (big line, marked "≈", tooltip), then romaji, then translation; the romaji is not duplicated',
     r0.orig && r0.orig.shown && r0.orig.big && r0.orig.text === 'きみのこえがきこえるよるに' && /≈/.test(r0.guessMark) && /guessed/i.test(r0.guessTitle)
-    && JSON.stringify(r0.shownTexts) === JSON.stringify(['きみのこえがきこえるよるに', C.ja[0], 'EN: ' + C.ja[0]]) && r0.orig.size === '28px' && r0.trans.size === '18px', JSON.stringify(r0));
+    && JSON.stringify(r0.shownTexts) === JSON.stringify(['きみのこえがきこえるよるに', C.ja[0], MEAN[C.ja[0]]]) && r0.orig.size === '28px' && r0.trans.size === '18px', JSON.stringify(r0));
   await setSettings({ orig: false, rom: false }); await page.waitForTimeout(400);
   r0 = (await stageLines(page)).find((l) => l.text === C.ja[0]);
-  check('Romanization toggle OFF → romaji hidden, translation remains the main line, no original', JSON.stringify(r0.shownTexts) === JSON.stringify(['EN: ' + C.ja[0]]), JSON.stringify(r0.shownTexts));
+  check('Romanization toggle OFF → romaji hidden, translation remains the main line, no original', JSON.stringify(r0.shownTexts) === JSON.stringify([MEAN[C.ja[0]]]), JSON.stringify(r0.shownTexts));
   await setSettings({ trans: false }); await page.waitForTimeout(400);
   r0 = (await stageLines(page)).find((l) => l.text === C.ja[0]);
   check('Translation and Romanization both OFF → the romaji is the only text left, so it shows as the main (28px) line', JSON.stringify(r0.shownTexts) === JSON.stringify([C.ja[0]]) && r0.rom.big && r0.rom.size === '28px', JSON.stringify(r0));
@@ -214,10 +227,27 @@ const stageLines = (page) => page.evaluate(() => [...document.querySelectorAll('
   check('popup: "LRCLIB lyrics were already romanized (Japanese) · original: hiragana guess"; This song names Japanese', !n.hidden && n.note === 'LRCLIB lyrics were already romanized (Japanese) · original: hiragana guess' && /· Japanese/.test(n.song), JSON.stringify(n));
   await pop.screenshot({ path: __dirname + '/popup-romanized.png' });
   let e2 = (await local('song:asin:B0MOCKR002'))['song:asin:B0MOCKR002'];
-  check('cache: the song entry is marked with the romanized-song version (rv 2), romaji lines stored with sl ja + local guess', e2 && e2.rv === 2 && e2.lines[C.ja[0]].sl === 'ja' && e2.lines[C.ja[0]].og === 'local', JSON.stringify(e2 && e2.lines[C.ja[0]]));
+  check('cache: the song entry is marked with the romanized-song version (rv 3), romaji lines stored with sl ja + local guess', e2 && e2.rv === 3 && e2.lines[C.ja[0]].sl === 'ja' && e2.lines[C.ja[0]].og === 'local', JSON.stringify(e2 && e2.lines[C.ja[0]]));
   await go(song('Night Ferry (Test)', 'B0MOCKR002'), 3500);
   L = await stageLines(page);
   check('replay: 0 LRCLIB and 0 Google requests, still shown as romanization', lReqs.length === 0 && gReqs.length === 0 && L.filter((l) => l.roman && l.rom && l.rom.text === l.text).length === 7, `lrclib=${lReqs.length} google=${gReqs.length}`);
+
+  // ---------- 3b. Google translates nothing (every line echoed, even the hiragana) ----------
+  googleHira = false;
+  await go(song('Echo Lane (Test)', 'B0MOCKR008'));
+  await page.waitForFunction(() => document.querySelectorAll('.amlt-stage .amlt-rblock').length >= 7, null, { timeout: 8000 }).catch(() => {});
+  L = await stageLines(page);
+  check('no real translation (Google echoes everything): the romaji is the main 28px line, shown ONCE (no empty or repeated translation, line text 0px)',
+    L.length === 7 && L.every((l) => l.roman && l.rblock && !l.trans && l.rom.big && l.rom.size === '28px' && l.lineSize === '0px' && JSON.stringify(l.shownTexts) === JSON.stringify([l.text])), JSON.stringify(L[0]));
+  await setSettings({ rom: false }); await page.waitForTimeout(400);
+  L = await stageLines(page);
+  check('no real translation, Romanization toggle OFF → the romaji still shows once (it is the only text)', L.every((l) => JSON.stringify(l.shownTexts) === JSON.stringify([l.text])), JSON.stringify(L[0].shownTexts));
+  await setSettings({ rom: true, orig: true }); await page.waitForTimeout(400);
+  L = await stageLines(page);
+  check('no real translation, "Original lyrics" ON → ≈ hiragana guess big, the romaji once below it, nothing else',
+    L.every((l) => l.orig && l.orig.big && l.shownTexts.length === 2 && l.shownTexts[1] === l.text && l.shownTexts[0] !== l.text), JSON.stringify(L[0].shownTexts));
+  await setSettings({ orig: false });
+  googleHira = true;
 
   // ---------- 4. Korean romanization + Gemini: language verdict and Hangul guess ----------
   await sw.evaluate(() => Promise.all([chrome.storage.local.set({ geminiKey: 'placeholder-not-a-real-key-TEST' }), chrome.storage.sync.set({ translator: 'gemini' })]));
@@ -231,7 +261,7 @@ const stageLines = (page) => page.evaluate(() => [...document.querySelectorAll('
     koReqs.length === 1 && g.lines.length === 7 && g.schema.type === 'OBJECT' && JSON.stringify(g.schema.properties.lang.enum) === '["ja","ko","zh","none"]' && g.schema.properties.lines.items.required.join() === 't,o'
     && /romanization of Korean/.test(g.sys) && /Hangul for Korean/.test(g.sys), JSON.stringify(koReqs.map((x) => x.lines.length)));
   check('Korean + Gemini: romanization slot = the line, main line = Gemini translation, no original shown (toggle off)',
-    L.filter((l) => l.roman).length === 6 && L.filter((l) => l.roman).every((l) => l.rom.text === l.text && l.trans.big && /^Gemini line/.test(l.trans.text) && (!l.orig || !l.orig.shown)), JSON.stringify(L[0]));
+    L.filter((l) => l.roman).length === 6 && L.filter((l) => l.roman).every((l) => l.rom.text === l.text && !l.rom.big && l.rom.size === '18px' && l.trans.big && l.trans.size === '28px' && l.trans.top < l.rom.top && /^Gemini line/.test(l.trans.text) && (!l.orig || !l.orig.shown)), JSON.stringify(L[0]));
   await setSettings({ orig: true }); await page.waitForTimeout(400);
   L = await stageLines(page);
   check('Korean + Gemini, "Original lyrics" ON → Gemini\'s Hangul guess as the big line, marked "≈"; the English line has none',
@@ -263,8 +293,10 @@ const stageLines = (page) => page.evaluate(() => [...document.querySelectorAll('
   L = await stageLines(page);
   check('pinyin without Gemini: romanization slot filled, and with "Original lyrics" ON there is NO original line (no reliable local conversion), the pinyin is not duplicated',
     gemReqs.length === 0 && L.length === 5 && L.every((l) => l.roman && !l.orig && l.rom.text === l.text && l.lineSize === '0px' && l.shownTexts.filter((t) => t === l.text).length === 1), JSON.stringify(L[0]));
+  check('pinyin without Gemini: Google asked with sl=zh-CN, the echoed pinyin is not used as a translation → the pinyin is the main line, once',
+    gSl.filter((r) => r.sl === 'zh-CN').length === 1 && gSl.find((r) => r.sl === 'zh-CN').n === 5 && L.every((l) => !l.trans && l.rom.big), JSON.stringify({ gSl, l: L[0] }));
   n = await note();
-  check('popup: "LRCLIB lyrics were already romanized (Chinese) · original script needs Gemini"', n.note === 'LRCLIB lyrics were already romanized (Chinese) · original script needs Gemini', JSON.stringify(n));
+  check('popup: "LRCLIB lyrics were already romanized (Chinese) · translation and original need Gemini"', n.note === 'LRCLIB lyrics were already romanized (Chinese) · translation and original need Gemini', JSON.stringify(n));
   await setSettings({ orig: false });
 
   // ---------- 7. English LRCLIB song: untouched ----------
@@ -276,7 +308,10 @@ const stageLines = (page) => page.evaluate(() => [...document.querySelectorAll('
   // ---------- 8. Cache: results from 1.3.5 ----------
   await sw.evaluate(async ({ romaji, en }) => {
     const { idx = {} } = await chrome.storage.local.get('idx');
-    idx['asin:B0MOCKR010'] = idx['asin:B0MOCKR011'] = idx['asin:B0MOCKR012'] = Date.now() - 864e5;
+    idx['asin:B0MOCKR010'] = idx['asin:B0MOCKR011'] = idx['asin:B0MOCKR012'] = idx['asin:B0MOCKR013'] = Date.now() - 864e5;
+    // the first 1.3.6 build: the echoed romaji stored as "no translation" ('')
+    const broken = { rv: 2, lines: Object.fromEntries(romaji.split('\n').map((l) => l.replace(/^\[[^\]]*\]/, '')).map((l) => [l, { t: { en: '' }, sl: 'ja', r: '' }])), ts: Date.now() - 864e5 };
+    await chrome.storage.local.set({ 'lrc:asin:B0MOCKR013': { v: 2, id: 111, dur: 200, synced: romaji }, 'song:asin:B0MOCKR013': broken });
     const stale = { lines: { 'kimi no koe ga kikoeru yoru ni': { t: { en: 'STALE 1.3.5 translation' }, sl: 'en', r: '' } }, noGemini: { en: 1 }, ts: Date.now() - 864e5 };
     await chrome.storage.local.set({ idx,
       'lrc:asin:B0MOCKR010': { id: 101, dur: 200, synced: romaji }, 'song:asin:B0MOCKR010': stale,       // 1.3.5 picked the romaji copy
@@ -296,8 +331,15 @@ const stageLines = (page) => page.evaluate(() => [...document.querySelectorAll('
   await waitBlocks(7);
   L = await stageLines(page);
   const e12 = (await local('song:asin:B0MOCKR012'))['song:asin:B0MOCKR012'];
-  check('cache: a song entry from before 1.3.6 for a romanized song is reset (no stale translation shown, no leftover "no Gemini" flag, rv 2), 0 LRCLIB requests',
-    lReqs.length === 0 && L[0].trans && L[0].trans.text === 'EN: ' + C.ja[0] && !JSON.stringify(e12).includes('STALE') && !e12.noGemini && e12.rv === 2, JSON.stringify({ reqs: lReqs.length, t: L[0].trans && L[0].trans.text }));
+  check('cache: a song entry from before 1.3.6 for a romanized song is reset (no stale translation shown, no leftover "no Gemini" flag, rv 3), 0 LRCLIB requests',
+    lReqs.length === 0 && L[0].trans && L[0].trans.text === MEAN[C.ja[0]] && !JSON.stringify(e12).includes('STALE') && !e12.noGemini && e12.rv === 3, JSON.stringify({ reqs: lReqs.length, t: L[0].trans && L[0].trans.text }));
+
+  await go(song('Night Ferry (Test)', 'B0MOCKR013'));
+  await waitBlocks(7);
+  L = await stageLines(page);
+  const e13 = (await local('song:asin:B0MOCKR013'))['song:asin:B0MOCKR013'];
+  check('cache: an entry from the first 1.3.6 build (rv 2, romaji stored with an empty translation) is redone → real translation main line, rv 3, 1 Google request (sl=ja)',
+    L.filter((l) => l.roman).every((l) => l.trans && l.trans.text === MEAN[l.text] && l.trans.big) && e13.rv === 3 && gSl.filter((r) => r.sl === 'ja').length === 1 && lReqs.length === 0, JSON.stringify({ t: L[0].trans, gSl, rv: e13.rv }));
 
   check('no page errors', errors.length === 0, errors.join(' | '));
   await ctx.close();

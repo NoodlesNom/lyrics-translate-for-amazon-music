@@ -155,6 +155,7 @@
     });
   }
 
+  const flat = (s) => s.normalize('NFD').replace(/[\p{M}\p{P}\s]+/gu, '').toLowerCase();
   const romOf = (d, text) => (d && d.r && NON_LATIN.test(text) ? d.r : '');
 
   // Romanized LRCLIB lyrics (v1.3.6): the answer names the final language ('' = Gemini says the lines aren't a
@@ -182,7 +183,9 @@
     const block = document.createElement('div'); // stays empty (hidden) when there's nothing to add, so the line still gets the text size
     const roman = el.classList.contains('amlt-roman') && /\p{L}/u.test(text);
     block.className = roman ? 'amlt amlt-rblock' : 'amlt';
-    const parts = roman ? [['orig', d.o], ['rom', text], ['trans', d.t]] : [['rom', romOf(d, text)], ['trans', d.t]];
+    // never the same text twice: a "translation" or guess that is just the romanization again is left out
+    const other = (v) => (v && flat(v) !== flat(text) ? v : '');
+    const parts = roman ? [['orig', other(d.o)], ['rom', text], ['trans', other(d.t)]] : [['rom', romOf(d, text)], ['trans', d.t]];
     for (const [kind, value] of parts) {
       if (!value) continue;
       const line = document.createElement('div');

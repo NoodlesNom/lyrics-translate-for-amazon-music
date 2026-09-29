@@ -47,6 +47,11 @@ const COLORS = { green: 'rgb(61, 220, 132)', amber: 'rgb(255, 179, 0)', red: 'rg
   d = await dot();
   check('Gemini selected but no key → gray dot, "Gemini: no key saved" (live, no reload)', d.present && d.state === 'gray' && d.color === COLORS.gray && d.title === 'Lyrics Translate · Gemini: no key saved', JSON.stringify(d));
   check('dot: about 8 px (+ a thin dark ring) in the button\'s bottom-right corner, never dimmed', d.w >= 9 && d.w <= 12 && /^1(\.5)?px rgb\(15, 17, 17\)$/.test(d.ring) && d.corner && d.opacity === '1/1', JSON.stringify(d));
+  // (live check 1.3.6: the box's Translator was Google, so no dot there was expected) Google chosen, no key → gone; Gemini → back
+  await set(null, { translator: 'google' });
+  check('no key: Translator switched to Google Translate → gray dot removed (live)', await until(() => !document.querySelector('.amlt-gdot') && document.querySelector('.amlt-float').title === 'Lyrics Translate'));
+  await set(null, { translator: 'gemini' });
+  check('no key: Translator back to Gemini → gray "no key saved" dot again (live)', await until(() => document.querySelector('.amlt-gdot[data-state=gray]') && /no key saved$/.test(document.querySelector('.amlt-float').title)));
   await set({ geminiKey: FAKE_KEY });
   await until(() => /not used yet/.test(document.querySelector('.amlt-float').title));
   d = await dot();

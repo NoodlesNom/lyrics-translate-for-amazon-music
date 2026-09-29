@@ -21,7 +21,7 @@ const LONG = {
   glabel: 'Gemini working · last reply 23 h ago',
   song: ['Tu Sei L\u2019Unica Donna Per Me (Live at the Royal Albert Hall, London \u2013 2019 Remastered Deluxe Edition) by Mock Singer, Another Very Long Artist Name & The Symphony Orchestra of Somewhere Far Away',
     'English + Japanese · Mostly English · translated 12 lines with Gemini + Google (from cache)'],
-  lrcNote: 'LRCLIB lyrics were already romanized (Japanese) · original script guessed by Gemini · not synced', // v1.3.6: the longest LRCLIB note
+  lrcNote: 'LRCLIB lyrics were already romanized (Chinese) · translation and original need Gemini · not synced', // v1.3.6: the longest LRCLIB note
   forceMsg: "Couldn't reach the page. Reload it and try again.",
   counter: 'Saved songs: 1234 (Gemini 1200 · Google 1234) · ~12.3 MB',
   updMsg: 'Checked just now · GitHub is limiting requests right now. Try again later.',

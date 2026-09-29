@@ -77,7 +77,7 @@ const ROMAN_GUESS = { gemini: ' · original script guessed by Gemini', local: ' 
 function romanNote(s, kind) {
   const r = s && s.roman;
   if (!r || !r.lang || (kind !== 'synced' && kind !== 'unsynced')) return '';
-  const guess = r.guess ? ROMAN_GUESS[r.guess] || '' : r.guess === '' && r.lang !== 'ja' ? ' · original script needs Gemini' : '';
+  const guess = r.guess ? ROMAN_GUESS[r.guess] || '' : r.guess === '' && r.lang !== 'ja' ? ' · translation and original need Gemini' : '';
   return `LRCLIB lyrics were already romanized (${langName(r.lang)})${guess}${kind === 'unsynced' ? ' · not synced' : ''}`;
 }
 function noteKind(s) {

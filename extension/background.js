@@ -219,7 +219,25 @@ chrome.runtime.onInstalled.addListener(async () => {
 // romanized. Those lines are translated as romaji/RR/pinyin, never language-skipped, and get an "original script" guess
 // (o): from Gemini (same request, which also names the language and overrides the guess, "none" = not romanized after
 // all), else for Japanese a local hiragana guess; Korean/Chinese get none without Gemini.
-const ROMAN_VER = 2; // song entries of romanized songs made before 1.3.6 (translated as if the romaji were the original) are dropped
+// Google can't translate a romanization: sent as is (auto-detected, or even with the language named) it comes back
+// unchanged or nearly so, which left romanized songs without a translation. So romanized lines go to Google as the local
+// hiragana guess with sl=ja (Japanese; Google translates that), and as the romanization with the language named for
+// Korean/Chinese (usually still unchanged: those songs get their translation from Gemini). An answer that is still
+// (nearly) the input is dropped (romTranslated), and the line shows its romanization as the main line.
+// ROMAN_VER 3: song entries of romanized songs made before (1.3.5, or 1.3.6 test builds that stored the echoed romaji as
+// "no translation") are dropped and translated again.
+const ROMAN_VER = 3;
+const ROMAN_SL = { ja: 'ja', ko: 'ko', zh: 'zh-CN' };
+const plainWords = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().split(/[^\p{L}\p{N}']+/u).filter(Boolean);
+function romTranslated(t, line, src, tl) {
+  if (!t || simplify(t) === simplify(line) || simplify(t) === simplify(src)) return false;
+  if (!sameLang(tl, 'ja') && /[\u3040-\u30ff]/.test(t)) return false; // kana left untranslated
+  // Words of the romanization itself (not the English words that stayed Latin in the hiragana guess, which a real
+  // translation keeps): an answer made mostly of them is an echo.
+  const kept = new Set(src === line ? [] : plainWords(src));
+  const words = plainWords(t), from = new Set(plainWords(line).filter((w) => !kept.has(w)));
+  return !words.length || words.filter((w) => from.has(w)).length < words.length * 0.6;
+}
 async function handle({ key, lines, tl, force, roman }) {
   const sk = 'song:' + key;
   const { [sk]: stored, geminiKey, geminiStatus } = await chrome.storage.local.get([sk, 'geminiKey', 'geminiStatus']);
@@ -243,6 +261,25 @@ async function handle({ key, lines, tl, force, roman }) {
   // Google: romanization + translation (language detected per batch). Returns false if a request failed.
   const google = async (list, perLine) => {
     let ok = true;
+    const rom = list.filter(isRom);
+    if (rom.length) {
+      const lang = rlang(), src = (l) => { const h = lang === 'ja' ? toHiragana(l) : ''; return /[\u3040-\u309f]/.test(h) ? h : latinize(l); };
+      for (const batch of batches(rom)) {
+        try {
+          const res = await translate(batch.map(src), tl, ROMAN_SL[lang]);
+          batch.forEach((line, i) => {
+            const c = cell(line), t = res.t[i] || '';
+            Object.assign(c, { sl: lang, r: '' });
+            c.t[tl] = romTranslated(t, line, src(line), tl) ? t : '';
+          });
+          changed = true;
+        } catch (e) {
+          ok = false;
+          console.warn('[lyrics-translate] Google request failed, will retry later:', e.message || e);
+        }
+      }
+      list = list.filter((l) => !isRom(l));
+    }
     const single = perLine ? list.filter(isLatin) : [];
     for (const batch of [...batches(list.filter((l) => !single.includes(l))), ...single.map((l) => [l])]) {
       try {
@@ -252,8 +289,7 @@ async function handle({ key, lines, tl, force, roman }) {
           c.sl = res.sl;
           c.r = isLatin(line) ? '' : res.r[i] || '';
           const t = res.t[i] || '';
-          c.t[tl] = (sameLang(res.sl, tl) && !isRom(line)) || simplify(t) === simplify(latinize(line)) ? '' : t;
-          if (isRom(line)) c.sl = rlang(); // Google's detection is unreliable for romanized text (best effort translation)
+          c.t[tl] = sameLang(res.sl, tl) || simplify(t) === simplify(latinize(line)) ? '' : t;
         });
         changed = true;
       } catch (e) {
@@ -466,21 +502,22 @@ function batches(lines) {
 }
 
 // Translate a batch; if lines can't be mapped back 1:1, split the batch in halves and retry.
-async function translate(lines, tl) {
-  const res = parse(await request(lines, tl), lines.length);
+// sl = source language (default: auto-detect).
+async function translate(lines, tl, sl = 'auto') {
+  const res = parse(await request(lines, tl, sl), lines.length);
   if (res || lines.length === 1) return res || { sl: '', t: [], r: [] };
   const mid = Math.ceil(lines.length / 2);
-  const [a, b] = [await translate(lines.slice(0, mid), tl), await translate(lines.slice(mid), tl)];
+  const [a, b] = [await translate(lines.slice(0, mid), tl, sl), await translate(lines.slice(mid), tl, sl)];
   return { sl: a.sl || b.sl, t: [...pad(a.t, mid), ...b.t], r: [...pad(a.r, mid), ...b.r] };
 }
 const pad = (arr, n) => Array.from({ length: n }, (_, i) => arr[i] || '');
 
-async function request(lines, tl) {
+async function request(lines, tl, sl = 'auto') {
   const q = lines.map((l) => l.replace(/\|/g, '/')).join(SEP);
   let last;
   for (const base of GOOGLE) {
     try {
-      const res = await fetchT(`${base}&sl=auto&tl=${encodeURIComponent(tl)}&dt=t&dt=rm`, {
+      const res = await fetchT(`${base}&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&dt=t&dt=rm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
         body: 'q=' + encodeURIComponent(q),
