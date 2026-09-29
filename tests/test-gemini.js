@@ -13,10 +13,16 @@ const check = (name, cond, info = '') => { results.push([cond ? 'PASS' : 'FAIL',
 
 // Invented Latin-script songs (mock songs 5 and 6) get synthetic Google answers instead of fixtures.
 const EN_LINES = ['We fold the paper planes at dawn', 'The kettle hums a sleepy tune', 'Our shadows lean against the door', 'Tomorrow waits beyond the hill'];
+// v1.3.3 songs 15/16 (invented): English lines as Google receives them (look-alike letter already turned Latin), two Japanese lines.
+const EN2 = ['We leave the porch light on for you', '\u201cHold on,\u201d the radio hums \u2014 so low', 'Paper cups and borrowed rain\uff01', 'Tomorrow keeps a seat for two \ud83c\udfb5',
+  'The ferry lights are blinking slow', 'We trade our coats for summer air', 'I hum the chorus, half asleep', '\u2014 and the gulls reply \u266a',
+  'Salt on the window, sun on the stairs', 'We\u2019ll be home before the tide', 'Paper boats in a row\u2026'];
+const JA2 = { '\u300c港の灯りが揺れている\u300d': ['\u201cThe harbor lights are swaying\u201d', 'Minato no akari ga yurete iru'], '猫が屋根で眠る': ['The cat sleeps on the roof', 'Neko ga yane de nemuru'] };
 const ES = { 'Las olas cantan en la arena': 'The waves sing on the sand', 'Mi barco duerme junto al muelle': 'My boat sleeps by the pier', 'La luna pinta el agua de plata': 'The moon paints the water silver' };
 function synthetic(q) {
   const ls = q.split('\n|\n');
-  if (ls.every((l) => EN_LINES.includes(l))) return [[[q, q, null, null]], null, 'en'];
+  if (ls.every((l) => EN_LINES.includes(l) || EN2.includes(l))) return [[[q, q, null, null]], null, 'en'];
+  if (ls.every((l) => JA2[l])) return [[[ls.map((l) => JA2[l][0]).join('\n|\n'), q, null, null], [null, null, null, ls.map((l) => JA2[l][1]).join(' | ')]], null, 'ja'];
   if (ls.every((l) => l in ES)) return [[[ls.map((l) => ES[l]).join('\n|\n'), q, null, null]], null, 'es'];
   if (ls.every((l) => l in ES || EN_LINES.includes(l))) return [[[q, q, null, null]], null, 'en']; // mixed batch: detected as English
 }
@@ -193,6 +199,52 @@ const waitTrans = (page, text) => page.waitForFunction((t) => [...document.query
   gfail = false;
   check('(d) Google detection fails on a Latin-only song → Gemini still tried and shown', gReqs.length === 1 && tReqs.length >= 1, `gemini=${gReqs.length} google=${tReqs.length}`);
 
+  // 4b2. v1.3.3: English songs as lyrics sites have them (invented lines) must not go to Gemini as a whole.
+  gReqs = []; tReqs = [];
+  await page.goto('https://music.amazon.com/?song=15');
+  await page.waitForFunction(() => document.querySelectorAll('.amlt').length >= 5, null, { timeout: 30000 }).catch(() => {}); await page.waitForTimeout(1500);
+  a = await annotations(page);
+  check('(e) English song with a Cyrillic look-alike letter (U+0435) and symbols (curly quotes, em dash, fullwidth !, emoji, ♪): 0 Gemini requests, 1 Google detection request (4 lines, look-alike sent as Latin)',
+    gReqs.length === 0 && tReqs.length === 1 && !tReqs[0].includes('\u0435') && tReqs[0].split('\n|\n').length === 4, `gemini=${gReqs.length} google=${tReqs.length}`);
+  check('(e) no translation and no romanization under any line', a.length === 5 && a.every((x) => !x.trans && !x.rom), JSON.stringify(a.map((x) => [x.trans, x.rom])));
+  gReqs = []; tReqs = [];
+  await page.goto('https://music.amazon.com/?song=16');
+  await waitTrans(page, 'Gemini line 2'); await page.waitForTimeout(800);
+  a = await annotations(page);
+  const S16 = a.map((x) => x.text);
+  const ja16 = a.filter((x) => /[\u3040-\u30ff\u4e00-\u9fff]/.test(x.text));
+  check('(f) mostly English song (7 English + 2 Japanese lines): no whole-song Gemini request, ONE Gemini request with only the 2 Japanese lines',
+    gReqs.length === 1 && ja16.length === 2 && JSON.stringify(gReqs[0].lines) === JSON.stringify(ja16.map((x) => x.text)), `gemini=${gReqs.map((r) => r.lines.length)}`);
+  check('(f) Google: 1 detection request for the 7 English lines, 1 romanization request for the 2 Japanese lines', tReqs.length === 2 && tReqs[0].split('\n|\n').length === 7 && tReqs[1].split('\n|\n').length === 2, `google=${tReqs.map((q) => q.split('\n|\n').length)}`);
+  check('(f) Japanese lines: Gemini translation + romanization; English lines: nothing added', ja16.every((x, i) => x.trans === `Gemini line ${i + 1}` && x.rom === JA2[x.text][1])
+    && a.filter((x) => !ja16.includes(x)).every((x) => !x.trans && !x.rom), JSON.stringify(a.map((x) => [x.trans, x.rom])));
+  gReqs = []; tReqs = [];
+  await page.goto('https://music.amazon.com/?song=16');
+  await waitTrans(page, 'Gemini line 2'); await page.waitForTimeout(800);
+  check('(f) replay: everything from the cache, 0 Gemini and 0 Google requests', gReqs.length === 0 && tReqs.length === 0, `gemini=${gReqs.length} google=${tReqs.length}`);
+  // (g) A song cached by <= 1.3.2 as Gemini-translated (English lines "rewritten" by Gemini): the check now runs once, the
+  //     contradicting Gemini output for the English lines is dropped, the Japanese lines keep theirs; other songs untouched.
+  const staleKey = 'song:ms:Lantern Bay Stale (Test)|English Mock', otherKey = 'song:ms:Paper Lantern (Test)|Mock Artist';
+  const otherBefore = JSON.stringify((await local(otherKey))[otherKey]);
+  await sw.evaluate(async ([k, lines]) => {
+    const e = { lines: {}, ts: Date.now() - 864e5 };
+    lines.forEach((l, i) => { e.lines[l] = /[\u3040-\u30ff\u4e00-\u9fff]/.test(l) ? { sl: 'ja', r: 'Stale romaji ' + (i + 1), t: { en: 'Stale Google ' + (i + 1) }, g: { en: 'Stale Gemini line ' + (i + 1) } } : { t: {}, g: { en: 'Stale Gemini rewrite ' + (i + 1) } }; });
+    const { idx = {} } = await chrome.storage.local.get('idx');
+    idx[k.slice(5)] = e.ts;
+    await chrome.storage.local.set({ [k]: e, idx });
+  }, [staleKey, S16]);
+  gReqs = []; tReqs = [];
+  await page.goto('https://music.amazon.com/?song=16&title=Lantern%20Bay%20Stale%20(Test)');
+  await waitTrans(page, 'Stale Gemini line 3'); await page.waitForTimeout(1000);
+  a = await annotations(page);
+  const staleAfter = (await local(staleKey))[staleKey];
+  check('(g) stale ≤1.3.2 Gemini cache of a mostly English song: 0 Gemini requests, 1 Google detection request, stale rewrites of English lines not shown',
+    gReqs.length === 0 && tReqs.length === 1 && a.every((x) => !/Stale Gemini rewrite/.test(x.trans || '')) && a.filter((x) => !/[\u3040-\u30ff\u4e00-\u9fff]/.test(x.text)).every((x) => !x.trans), `gemini=${gReqs.length} google=${tReqs.length} ${JSON.stringify(a.map((x) => x.trans))}`);
+  check('(g) the Japanese lines keep their cached Gemini translations; entry marked checked + mostly, English lines lost only their Gemini text',
+    JSON.stringify(a.filter((x) => x.trans).map((x) => x.trans)) === '["Stale Gemini line 3","Stale Gemini line 6"]' && staleAfter.chk.en === 1 && staleAfter.mostly.en === 1
+    && S16.filter((l) => !/[\u3040-\u30ff\u4e00-\u9fff]/.test(l)).every((l) => !('en' in staleAfter.lines[l].g) && staleAfter.lines[l].t.en === ''), JSON.stringify(a.map((x) => x.trans)));
+  check('(g) other songs\' cache entries are left alone', JSON.stringify((await local(otherKey))[otherKey]) === otherBefore);
+
   // 4c. Popup "Translate this song" button. Playwright's popup is a normal tab, so the popup's idea of the
   //     active tab is pointed at the mock Amazon tab (tabs.query stub); the messaging itself is real.
   const tabId = await sw.evaluate(async () => {
@@ -224,6 +276,21 @@ const waitTrans = (page, text) => page.waitForFunction((t) => [...document.query
   await page.goto('https://music.amazon.com/?song=7'); await page.waitForTimeout(1200);
   check('"This song": Japanese song (with English lines) translated by Gemini, replayed → Japanese + English, Gemini, from cache', ...await songLine('Mixed Lantern (Test) by Mock Artist · Japanese + English · Translated with Gemini (from cache)'));
   await pop.screenshot({ path: __dirname + '/popup-song.png' });
+  await page.goto('https://music.amazon.com/?song=15'); await page.waitForTimeout(1200);
+  check('"This song": English song with a look-alike letter and symbols → "English · Already in English, no translation needed"', ...await songLine('Kettle Glow (Test) by English Mock · English · Already in English, no translation needed'));
+  const songRe = async (re) => {
+    const ok = await pop.waitForFunction((src) => new RegExp(src).test(document.querySelector('#song').textContent), re.source, { timeout: 8000 }).then(() => true, () => false);
+    return [ok, await pop.textContent('#song')];
+  };
+  await page.goto('https://music.amazon.com/?song=16'); await page.waitForTimeout(1200);
+  check('"This song": mostly English song → "English + Japanese · Mostly English · translated 2 lines with Gemini"', ...await songRe(/^This song: Lantern Bay \(Test\) by English Mock · English \+ Japanese · Mostly English · translated 2 lines with Gemini( \(from cache\))?$/));
+  await page.goto('https://music.amazon.com/?song=16&title=Lantern%20Bay%20Stale%20(Test)'); await page.waitForTimeout(1200);
+  check('"This song": formerly Gemini-cached song → truthful "Mostly English · translated 2 lines with Gemini"', ...await songRe(/^This song: Lantern Bay Stale \(Test\) by English Mock · English \+ Japanese · Mostly English · translated 2 lines with Gemini( \(from cache\))?$/));
+  await page.goto('https://music.amazon.com/?song=16'); await page.waitForTimeout(1200);
+  await pointPopupAt(tabId);
+  gReqs = []; tReqs = [];
+  const msgM = await clickTranslate();
+  check('(f) "Translate this song" on the mostly English song still sends the whole song to Gemini (the user asked)', gReqs.length === 1 && gReqs[0].lines.length === 9 && msgM === 'Done: translated with Gemini.', `${msgM} gemini=${gReqs.map((r) => r.lines.length)}`);
 
   gReqs = []; tReqs = [];
   await page.goto('https://music.amazon.com/?song=8'); await page.waitForTimeout(1800);

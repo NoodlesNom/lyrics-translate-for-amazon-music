@@ -31,7 +31,7 @@
   const ANY_SLIDER = '[role="slider"][aria-label]';              // fallback clock: a slider labelled "Playback 1:23 of 3:45"
   // ================================================================================================
 
-  const NON_LATIN = /[^\P{L}\p{Script=Latin}]/u;
+  const NON_LATIN = /[^\P{L}\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u; // letters only (as in background.js)
   const RETRY_MS = 60000;
   const STABLE_MS = 500; // request only after the line list has stopped changing (one request per song)
 

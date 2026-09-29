@@ -76,7 +76,7 @@ async function describe({ key, lines, pending, failed }) {
   const tl = $('tl').value;
   const gemOn = !!geminiKey && $('translator').value === 'gemini' && !(entry.noGemini && entry.noGemini[tl]);
   const langs = {}, used = new Set();
-  let served = 0;
+  let served = 0, translated = 0;
   for (const l of lines) {
     const c = entry.lines[l] || {};
     const fromGem = gemOn && c.g && tl in c.g;
@@ -84,12 +84,16 @@ async function describe({ key, lines, pending, failed }) {
     const lang = c.sl || (t === '' ? tl : ''); // Gemini leaves lines already in the target language unchanged
     if (lang) langs[langName(lang)] = (langs[langName(lang)] || 0) + 1;
     if (t !== undefined) served++;
-    if (t) used.add(fromGem ? 'Gemini' : 'Google');
+    if (t) { used.add(fromGem ? 'Gemini' : 'Google'); translated++; }
   }
   const names = Object.keys(langs).sort((a, b) => langs[b] - langs[a]).slice(0, 3).join(' + ');
+  const by = ['Gemini', 'Google'].filter((x) => used.has(x)).join(' + ');
+  const cached = idx[key] - (entry.ts || 0) > 3000 ? ' (from cache)' : '';
+  // Mostly in the target language (at most a quarter of the lines needed translating, e.g. a Japanese phrase in an English song).
   const state = pending ? 'Translating…' : failed ? 'Some lines failed, retrying' : !served ? 'Not translated yet'
     : !used.size ? `Already in ${langName(tl)}, no translation needed`
-    : `Translated with ${['Gemini', 'Google'].filter((x) => used.has(x)).join(' + ')}` + (idx[key] - (entry.ts || 0) > 3000 ? ' (from cache)' : '');
+    : translated * 4 <= served ? `Mostly ${langName(tl)} · translated ${translated} line${translated === 1 ? '' : 's'} with ${by}${cached}`
+    : `Translated with ${by}${cached}`;
   return (names ? names + ' · ' : '') + state;
 }
 const say = (text) => { $('forceMsg').textContent = text; };

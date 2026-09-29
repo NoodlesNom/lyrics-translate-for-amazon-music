@@ -30,6 +30,15 @@ const SEARCH = {
 };
 const LONG = ['[61:38.00]Lanterns drift across the late canal', '[61:44.00]The night bus hums a second verse', '[61:50.00]We fold the map and wait for day'].join('\n'); // h:mm:ss track
 GET['Long Night (Test)'] = rec(4, 'Long Night (Test)', 'Mock Orchestra', 3725, { synced: LONG });
+// v1.3.3 (invented): an English song as lyrics sites have it: a Cyrillic look-alike "\u0435" typed into one English word,
+// curly quotes, an em dash, fullwidth "！", an emoji, "♪" and empty stamps; and a mostly English song with two Japanese lines.
+const HOMO = ['[00:02.00]Porch light burning past the l\u0435vee', '[00:06.00]\u201cStay a while,\u201d the screen door sings', '[00:10.00]', '[00:12.00]\u266a',
+  '[00:14.00]Coffee rings on yesterday\u2019s news\uff01', '[00:18.00]Nobody\u2019s counting \u2014 not tonight \ud83c\udf19', '[00:22.00]Porch light burning past the l\u0435vee'].join('\n');
+const MOSTLY_EN = ['[00:02.00]Harbor bells are ringing low', '[00:06.00]紙の月が川に浮かぶ', '[00:10.00]We row until the lanterns fade', '[00:14.00]\u266a',
+  '[00:16.00]Gulls are drawing circles wide', '[00:20.00]ランプの下で名前を呼んだ', '[00:24.00]Oars keep time \u2014 \u201cone, two\u201d', '[00:28.00]The tide forgets our names',
+  '[00:32.00]Salt and pine along the shore'].join('\n');
+GET['Porch Light (Test)'] = rec(40, 'Porch Light (Test)', 'Mock Singer', 200, { synced: HOMO });
+GET['Harbor Bells (Test)'] = rec(41, 'Harbor Bells (Test)', 'Mock Singer', 200, { synced: MOSTLY_EN });
 const JA = { '紙の月が川に浮かぶ': ['A paper moon floats on the river', 'Kami no tsuki ga kawa ni ukabu'], 'ランプの下で名前を呼んだ': ['I called your name under the lamp', 'Ranpu no shita de namae o yonda'] };
 
 let lmode = 'ok', lReqs = [];
@@ -90,7 +99,7 @@ const near = (a, b, tol = 12) => Math.abs(a - b) <= tol;
 
 (async () => {
   const manifest = JSON.parse(fs.readFileSync(EXT + '/manifest.json', 'utf8'));
-  check('manifest 1.3.2: no new permissions (storage + the same four hosts)', manifest.version === '1.3.2' && JSON.stringify(manifest.permissions) === '["storage"]'
+  check('manifest 1.3.3: no new permissions (storage + the same four hosts)', manifest.version === '1.3.3' && JSON.stringify(manifest.permissions) === '["storage"]'
     && JSON.stringify(manifest.host_permissions) === JSON.stringify(['https://clients5.google.com/*', 'https://translate.googleapis.com/*', 'https://generativelanguage.googleapis.com/*', 'https://lrclib.net/*']));
   const src = fs.readFileSync(EXT + '/content.js', 'utf8') + fs.readFileSync(EXT + '/content.css', 'utf8');
   check('old side panel code/CSS removed (no .amlt-lrc, no minimize/hide buttons)', !/amlt-lrc|amlt-lrc-min|data-act|lrcHidden|lrcMin/.test(src));
@@ -99,7 +108,15 @@ const near = (a, b, tol = 12) => Math.abs(a - b) <= tol;
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`] });
   await ctx.route(/lrclib\.net/, onLrclib);
   await ctx.route(/clients5\.google\.com|translate\.googleapis\.com/, onGoogle);
-  await ctx.route(/generativelanguage\.googleapis\.com/, (r) => r.fulfill({ status: 500, body: '' }));
+  // Gemini (MOCKED, placeholder key, only set in section 10): records requests; non-Latin lines → "Gemini line <n>", others unchanged.
+  let gemReqs = [];
+  await ctx.route(/generativelanguage\.googleapis\.com/, (r) => {
+    const body = JSON.parse(r.request().postData() || '{}');
+    const lines = ((body.contents && body.contents[0].parts[0].text) || '').split('\n').map((x) => x.replace(/^\d+\.\s/, ''));
+    gemReqs.push(lines);
+    const out = lines.map((l, i) => (/[^\P{L}\p{Script=Latin}]/u.test(l) ? `Gemini line ${i + 1}` : l));
+    r.fulfill({ contentType: 'application/json', body: JSON.stringify({ candidates: [{ content: { role: 'model', parts: [{ text: JSON.stringify(out) }] } }] }) });
+  });
   await ctx.route('https://music.amazon.com/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: fs.readFileSync(__dirname + '/mock.html') }));
   let [sw] = ctx.serviceWorkers(); if (!sw) sw = await ctx.waitForEvent('serviceworker');
   const extId = sw.url().split('/')[2];
@@ -163,7 +180,7 @@ const near = (a, b, tol = 12) => Math.abs(a - b) <= tol;
   check('normal page: badge absent → looked up only after the ~1.8 s settle (a decoy badge elsewhere is ignored)', early === 0 && lReqs.length === 1 && lReqs[0].path === '/api/get', `reqsAt1s=${early} reqs=${JSON.stringify(lReqs.map((r) => r.path))}`);
   check('normal page: NO lyrics panel at all (only the floating button is ours)', !(await ours(page)) && JSON.stringify(normalKids) === '["amlt-float"]', JSON.stringify(normalKids));
   check('request: /api/get with the mini-player title, artist (aria-labels) and duration from the slider label (whole seconds)', JSON.stringify(lReqs[0] && lReqs[0].q) === JSON.stringify({ track_name: 'Glass Harbor (Test)', artist_name: 'Mock Singer', duration: '200' }), JSON.stringify(lReqs[0] && lReqs[0].q));
-  check('request: identifies the client via the Lrclib-Client header', /^Lyrics Translate & Romanize for Amazon Music v1\.3\.2 \(https:\/\/github\.com\/NoodlesNom\/lyrics-translate-for-amazon-music\)$/.test(lReqs[0] && lReqs[0].client), lReqs[0] && lReqs[0].client);
+  check('request: identifies the client via the Lrclib-Client header', /^Lyrics Translate & Romanize for Amazon Music v1\.3\.3 \(https:\/\/github\.com\/NoodlesNom\/lyrics-translate-for-amazon-music\)$/.test(lReqs[0] && lReqs[0].client), lReqs[0] && lReqs[0].client);
   lReqs = [];
   await page.click('button[aria-label="Enter Full Screen"]');
   const t0 = Date.now();
@@ -411,6 +428,50 @@ const near = (a, b, tol = 12) => Math.abs(a - b) <= tol;
   await go('song=12&stagehref=tracks', 6000); n = await note();
   check('429: honored, not cached as "not found", no hammering (1 request in 6 s); popup says it will retry', lReqs.length === 1 && !(await local(lrcKey(12)))[lrcKey(12)] && /will retry/.test(n.note), `reqs=${lReqs.length} ${n.note}`);
   lmode = 'ok';
+
+  // ---------- 10. v1.3.3: LRCLIB lines of an English song never go to Gemini as a whole (target English, Gemini selected) ----------
+  await sw.evaluate(() => Promise.all([chrome.storage.local.set({ geminiKey: 'placeholder-not-a-real-key-TEST' }), chrome.storage.sync.set({ translator: 'gemini' })]));
+  const isJa = (t) => /[\u3040-\u30ff\u4e00-\u9fff]/.test(t);
+  gemReqs = []; gReqs = [];
+  await go('song=9&title=Porch%20Light%20(Test)&asin=B0MOCKP001&stagehref=tracks', 4500);
+  S = await stageInfo(page);
+  check('(v1.3.3) LRCLIB English song with a Cyrillic look-alike letter + symbols: shown, 0 Gemini requests, 1 Google detection request (look-alike sent as Latin)',
+    S && S.n === 7 && gemReqs.length === 0 && gReqs.length === 1 && gReqs[0].split('\n|\n').length === 4 && !gReqs[0].includes('\u0435'), `n=${S && S.n} gemini=${gemReqs.length} google=${gReqs.length}`);
+  const porchLines = S ? [...new Set(S.lines.map((l) => l.text).filter((t) => /\p{L}/u.test(t)))] : [];
+  check('(v1.3.3) …no translation and no romanization on any LRCLIB line', S && S.lines.every((l) => !l.trans && !l.rom), JSON.stringify(S && S.lines.map((l) => [l.trans, l.rom])));
+  n = await note();
+  check('(v1.3.3) popup: "English · Already in English, no translation needed" + "Lyrics added from LRCLIB (synced)"', n.song === 'This song: Porch Light (Test) by Mock Singer · English · Already in English, no translation needed' && n.note === 'Lyrics added from LRCLIB (synced)', JSON.stringify(n));
+
+  gemReqs = []; gReqs = [];
+  await go('song=9&title=Harbor%20Bells%20(Test)&asin=B0MOCKP002&stagehref=tracks', 4500);
+  await page.waitForFunction(() => [...document.querySelectorAll('.amlt-stage .amlt-trans')].length >= 2, null, { timeout: 8000 }).catch(() => {});
+  S = await stageInfo(page);
+  const jaL = S ? S.lines.filter((l) => isJa(l.text)) : [];
+  check('(v1.3.3) LRCLIB mostly English song (6 English + 2 Japanese lines): ONE Gemini request with only the 2 Japanese lines, no whole-song request',
+    gemReqs.length === 1 && JSON.stringify(gemReqs[0]) === JSON.stringify(jaL.map((l) => l.text)), `gemini=${JSON.stringify(gemReqs.map((r) => r.length))}`);
+  check('(v1.3.3) …Japanese lines: Gemini translation + romanization; English lines: nothing added', jaL.length === 2 && jaL.every((l, i) => l.trans === `Gemini line ${i + 1}` && l.rom === JA[l.text][1])
+    && S.lines.filter((l) => !isJa(l.text)).every((l) => !l.trans && !l.rom), JSON.stringify(S && S.lines.map((l) => [l.trans, l.rom])));
+  n = await note();
+  check('(v1.3.3) popup: "English + Japanese · Mostly English · translated 2 lines with Gemini"', /^This song: Harbor Bells \(Test\) by Mock Singer · English \+ Japanese · Mostly English · translated 2 lines with Gemini( \(from cache\))?$/.test(n.song), JSON.stringify(n));
+
+  // The reported case: an English LRCLIB song cached by 1.3.2 as Gemini-translated → no longer overrides the skip rule.
+  const keep = JSON.stringify((await local('song:asin:B0MOCK0009'))['song:asin:B0MOCK0009']);
+  await sw.evaluate(async (lines) => {
+    const e = { lines: {}, ts: Date.now() - 864e5 };
+    lines.forEach((l, i) => { e.lines[l] = { t: {}, g: { en: 'Stale Gemini rewrite ' + (i + 1) } }; });
+    const { idx = {} } = await chrome.storage.local.get('idx');
+    idx['asin:B0MOCKP003'] = e.ts;
+    await chrome.storage.local.set({ 'song:asin:B0MOCKP003': e, idx });
+  }, porchLines);
+  gemReqs = []; gReqs = [];
+  await go('song=9&title=Porch%20Light%20(Test)&asin=B0MOCKP003&stagehref=tracks', 4500);
+  S = await stageInfo(page);
+  const e3 = (await local('song:asin:B0MOCKP003'))['song:asin:B0MOCKP003'];
+  check('(v1.3.3) stale 1.3.2 Gemini cache of an English LRCLIB song: 0 Gemini requests, stale rewrites not shown, song now marked "no Gemini", its Gemini text dropped',
+    porchLines.length === 4 && S && gemReqs.length === 0 && gReqs.length === 1 && S.lines.every((l) => !l.trans) && e3.noGemini.en === 1 && Object.values(e3.lines).every((c) => !('en' in c.g)), `gemini=${gemReqs.length} google=${gReqs.length} ${JSON.stringify(S && S.lines.map((l) => l.trans))}`);
+  n = await note();
+  check('(v1.3.3) …popup is truthful: "English · Already in English, no translation needed"', n.song === 'This song: Porch Light (Test) by Mock Singer · English · Already in English, no translation needed', JSON.stringify(n));
+  check('(v1.3.3) …other songs\' cache entries untouched', JSON.stringify((await local('song:asin:B0MOCK0009'))['song:asin:B0MOCK0009']) === keep);
 
   check('no page errors', errors.length === 0, errors.join(' | '));
   await ctx.close();

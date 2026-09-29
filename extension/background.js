@@ -24,8 +24,24 @@ const SCRIPTS = [
   ['thai', /\p{Script=Thai}/u],
   ['greek', /\p{Script=Greek}/u],
 ];
-const NON_LATIN = /[^\P{L}\p{Script=Latin}]/u;
-const scriptOf = (s) => (SCRIPTS.find(([, re]) => re.test(s)) || [NON_LATIN.test(s) ? 'other' : 'latin'])[0];
+// A line is Latin unless it holds a LETTER of another script. Symbols, punctuation, emoji, digits (♪, curly quotes, dashes,
+// fullwidth punctuation) and Common/Inherited-script letters (e.g. the modifier apostrophe U+02BC) never count.
+const NON_LATIN = /[^\P{L}\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u;
+// Cyrillic/Greek letters that look exactly like Latin ones. Lyrics sites sometimes have one typed into an English line
+// (e.g. Cyrillic "е" U+0435 in an English word), which made the whole song look non-Latin before 1.3.3.
+const LOOKALIKE = new Map('аa еe оo рp сc уy хx іi јj ѕs ԁd ԛq ԝw һh ӏl АA ВB ЕE КK МM НH ОO РP СC ТT ХX ІI ЈJ ЅS ҮY ΑA ΒB ΕE ΖZ ΗH ΙI ΚK ΜM ΝN ΟO ΡP ΤT ΥY ΧX οo ιi νv κk ρp'
+  .split(' ').map((p) => [...p]));
+// A mostly-Latin line whose only other-script letters are look-alikes → the same line with their Latin twins
+// (used for the script test and sent to Google; the cache still keys the line as shown on the page).
+function latinize(line) {
+  const letters = [...line].filter((c) => /\p{L}/u.test(c));
+  const foreign = letters.filter((c) => NON_LATIN.test(c));
+  if (!foreign.length || foreign.length * 2 >= letters.length || !foreign.every((c) => LOOKALIKE.has(c))) return line;
+  return [...line].map((c) => LOOKALIKE.get(c) || c).join('');
+}
+const isLatin = (l) => !NON_LATIN.test(latinize(l));
+const scriptOf = (s) => (s = latinize(s), (SCRIPTS.find(([, re]) => re.test(s)) || [NON_LATIN.test(s) ? 'other' : 'latin'])[0]);
+const MOSTLY = 0.25; // a song counts as mostly Latin when at most this share of its lines are in another script
 
 const norm = (l) => (l || '').toLowerCase().replace(/^iw\b/, 'he');
 const sameLang = (a, b) => {
@@ -61,25 +77,28 @@ async function handle({ key, lines, tl, force }) {
   const { translator } = await chrome.storage.sync.get('translator');
   const entry = stored || { lines: {} };
   const cell = (l) => entry.lines[l] || (entry.lines[l] = { t: {} });
-  if (force) { if (entry.noGemini) delete entry.noGemini[tl]; (entry.force ||= {})[tl] = 1; }
+  if (force) { if (entry.noGemini) delete entry.noGemini[tl]; if (entry.mostly) delete entry.mostly[tl]; (entry.force ||= {})[tl] = 1; }
   let useGemini = !!geminiKey && translator !== 'google' && !(entry.noGemini && entry.noGemini[tl]);
-  const gem = (l) => useGemini && entry.lines[l] && entry.lines[l].g && tl in entry.lines[l].g;
+  const latin = lines.filter(isLatin), other = lines.filter((l) => !isLatin(l));
+  let mostly = !!(entry.mostly && entry.mostly[tl]); // mostly in the target language: Gemini only gets the non-Latin lines
+  const forGem = (l) => useGemini && !(mostly && isLatin(l));
+  const gem = (l) => forGem(l) && entry.lines[l] && entry.lines[l].g && tl in entry.lines[l].g;
   const hasT = (l) => entry.lines[l] && entry.lines[l].t && tl in entry.lines[l].t;
   let changed = !!force, geminiCode;
 
   // Google: romanization + translation (language detected per batch). Returns false if a request failed.
   const google = async (list, perLine) => {
     let ok = true;
-    const latin = perLine ? list.filter((l) => !NON_LATIN.test(l)) : [];
-    for (const batch of [...batches(list.filter((l) => !latin.includes(l))), ...latin.map((l) => [l])]) {
+    const single = perLine ? list.filter(isLatin) : [];
+    for (const batch of [...batches(list.filter((l) => !single.includes(l))), ...single.map((l) => [l])]) {
       try {
-        const res = await translate(batch, tl);
+        const res = await translate(batch.map(latinize), tl);
         batch.forEach((line, i) => {
           const c = cell(line);
           c.sl = res.sl;
-          c.r = NON_LATIN.test(line) ? res.r[i] || '' : '';
+          c.r = isLatin(line) ? '' : res.r[i] || '';
           const t = res.t[i] || '';
-          c.t[tl] = sameLang(res.sl, tl) || simplify(t) === simplify(line) ? '' : t;
+          c.t[tl] = sameLang(res.sl, tl) || simplify(t) === simplify(latinize(line)) ? '' : t;
         });
         changed = true;
       } catch (e) {
@@ -90,25 +109,38 @@ async function handle({ key, lines, tl, force }) {
     return ok;
   };
 
-  // 0. Latin-only song: detect its language with Google first (free). Already in the target language → no Gemini,
-  //    for replays too, and the Gemini status is left alone. If detection fails, Gemini is tried as usual.
-  if (useGemini && !(entry.force && entry.force[tl]) && lines.some((l) => !gem(l)) && !lines.some((l) => NON_LATIN.test(l))) {
-    await google(lines.filter((l) => !hasT(l)));
-    if (lines.every((l) => hasT(l) && sameLang(entry.lines[l].sl, tl))) {
-      (entry.noGemini ||= {})[tl] = 1;
-      useGemini = false;
+  // 0. Latin or mostly Latin song (at most a quarter of its lines in another script; symbols and look-alike letters don't
+  //    count): detect the Latin lines' language with Google first (free), once per song and language (entry.chk) and again
+  //    for new lines. That includes songs cached with Gemini before 1.3.3. Latin lines in the target language →
+  //    no whole-song Gemini request, for replays too, and the Gemini status is left alone:
+  //    - no other lines: nothing goes to Gemini (noGemini);
+  //    - a few non-Latin lines (e.g. a Japanese phrase): only those go to the selected translator (mostly).
+  //    This song's cached Gemini output for its Latin lines contradicts that and is dropped (other songs are untouched).
+  //    If detection fails, Gemini is tried as usual.
+  if (useGemini && !(entry.force && entry.force[tl]) && latin.length && other.length <= lines.length * MOSTLY
+      && (!(entry.chk && entry.chk[tl]) || latin.some((l) => !hasT(l)))) {
+    await google(latin.filter((l) => !hasT(l)));
+    if (latin.every(hasT)) {
+      (entry.chk ||= {})[tl] = 1;
       changed = true;
+      if (latin.every((l) => sameLang(entry.lines[l].sl, tl))) {
+        for (const l of latin) if (entry.lines[l].g) delete entry.lines[l].g[tl];
+        if (other.length) { (entry.mostly ||= {})[tl] = 1; mostly = true; }
+        else { (entry.noGemini ||= {})[tl] = 1; useGemini = false; }
+      }
     }
   }
 
-  // 1. Gemini: the whole song in one request (skipped while backing off after an error).
+  // 1. Gemini: the whole song in one request, or only its non-Latin lines when it's mostly in the target language
+  //    (skipped while backing off after an error).
   const paused = (geminiStatus && geminiStatus.until) > Date.now();
+  const gemLines = lines.filter(forGem);
   if (useGemini && force && paused) geminiCode = geminiStatus.code; // popup names the reason for the pause
-  if (useGemini && (force || lines.some((l) => !gem(l))) && !paused) {
-    const res = await gemini(lines, tl, geminiKey);
+  if (useGemini && gemLines.length && (force || gemLines.some((l) => !gem(l))) && !paused) {
+    const res = await gemini(gemLines, tl, geminiKey);
     geminiCode = res.out ? 'ok' : res.code;
     if (res.out) {
-      lines.forEach((l, i) => { const c = cell(l); (c.g ||= {})[tl] = simplify(res.out[i]) === simplify(l) ? '' : res.out[i]; });
+      gemLines.forEach((l, i) => { const c = cell(l); (c.g ||= {})[tl] = simplify(res.out[i]) === simplify(l) ? '' : res.out[i]; });
     } else if (res.code === 'mismatch') {
       (entry.noGemini ||= {})[tl] = 1; // this song stays on Google
       useGemini = false;
@@ -119,7 +151,7 @@ async function handle({ key, lines, tl, force }) {
 
   // 2. Google: romanization for non-Latin lines, and translation for anything Gemini didn't cover.
   //    Forced: every line Gemini didn't cover is translated again, ignoring cached (possibly empty) translations.
-  const ok = await google(lines.filter((l) => (!gem(l) && (force || !hasT(l))) || (NON_LATIN.test(l) && !(entry.lines[l] && 'r' in entry.lines[l]))), force);
+  const ok = await google(lines.filter((l) => (!gem(l) && (force || !hasT(l))) || (!isLatin(l) && !(entry.lines[l] && 'r' in entry.lines[l]))), force);
 
   await persist(key, entry, changed);
   const results = {};
