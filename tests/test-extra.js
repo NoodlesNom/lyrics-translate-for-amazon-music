@@ -7,6 +7,7 @@ let fail = false, count = 0;
 (async () => {
   const ctx = await chromium.launchPersistentContext('', { channel: 'chromium', headless: true,
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`] });
+  await ctx.route(/api\.github\.com/, (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ tag_name: 'v' + JSON.parse(fs.readFileSync(EXT + '/manifest.json', 'utf8')).version, html_url: 'https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest' }) })); // v1.3.4 update check (unpacked): mocked, same version
   await ctx.route(/clients5\.google\.com|translate\.googleapis\.com/, async (route) => {
     count++;
     if (fail) return route.fulfill({ status: 429, body: '' });

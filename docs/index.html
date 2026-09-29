@@ -99,6 +99,7 @@
     <h2>What's new</h2>
     <p class="sub">Recent versions, newest first. Full history and downloads in the <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases">releases</a>.</p>
     <div class="changelog">
+      <div class="card"><h3>1.3.4</h3><p>Copies installed with Load unpacked now tell you when a new version is out (a NEW badge and a download link in the popup) and get a <b>Check for updates</b> button. Store copies update automatically, as before.</p></div>
       <div class="card"><h3>1.3.3</h3><p>Smarter language check: songs already in your language never go to Gemini, even with look-alike characters, and mostly English songs only get their few foreign lines translated.</p></div>
       <div class="card"><h3>1.3.2</h3><p>Lyrics from LRCLIB now appear in Amazon's full view, in the same spot and style as Amazon's own lyrics, with the current line highlighted.</p></div>
       <div class="card"><h3>1.3.1</h3><p>More reliable detection of songs Amazon has no lyrics for, using the player bar's "Lyrics available" badge.</p></div>
@@ -122,6 +123,7 @@
         <dt>Text size</dt><dd>Small (85%), Default, Large (120%) or Extra large (145%).</dd>
         <dt>Toggles</dt><dd>Show romanization, Show translation, Show original lyrics, Show floating button, and <b>Find lyrics when Amazon has none</b> (on by default; turn it off and nothing is ever sent to LRCLIB).</dd>
         <dt>Saved songs</dt><dd>For example "Saved songs: 12 (Gemini 8 · Google 6) · ~0.3 MB": how many songs are cached, how many are fully translated by each translator, and roughly how much storage is used.</dd>
+        <dt>Check for updates</dt><dd>Unpacked copies only: asks GitHub for the latest version and shows "You're up to date (v1.3.4)" or "Update available: vX.Y.Z · Download" with a one-line how-to. They also check on their own about once a day and put a small NEW badge on the icon when an update is out. Store copies don't show it; Edge updates them.</dd>
         <dt>Settings</dt><dd>Opens the settings page, where you save, test or remove your Gemini key.</dd>
       </dl>
     </div>
@@ -143,10 +145,11 @@
 <section id="privacy">
   <div class="wrap">
     <h2>Privacy</h2>
-    <div class="grid four">
+    <div class="grid five">
       <div class="card"><h3>No data collection</h3><p>The developer collects nothing. There are no analytics, no trackers, no accounts and no servers of our own.</p></div>
       <div class="card"><h3>What is sent, and where</h3><p>Only the lyric lines on screen are sent to Google Translate, and to Google Gemini if you added your own key, only to translate or romanize them. No cookies, song history or other data.</p></div>
       <div class="card"><h3>LRCLIB, only when needed</h3><p>Only for songs Amazon has no lyrics for, the song's title, artist and duration are sent to <a href="https://lrclib.net">lrclib.net</a> to find lyrics. No personal data, no account. Switch it off with <b>Find lyrics when Amazon has none</b>.</p></div>
+      <div class="card"><h3>Update check (unpacked only)</h3><p>Copies installed with Load unpacked ask GitHub's public API for the latest version number about once a day and when you press <b>Check for updates</b>. Nothing personal is sent. Store copies never do.</p></div>
       <div class="card"><h3>Stored in your browser</h3><p>Your Gemini key, the translation cache and the LRCLIB lyrics cache stay in local extension storage; your settings are in sync storage. Removing the extension clears them.</p></div>
     </div>
     <p style="margin-top:20px"><a href="privacy.html">Read the full privacy policy</a></p>
@@ -158,7 +161,7 @@
     <h2>Install</h2>
     <div class="grid">
       <div class="card"><h3>From Microsoft Edge Add-ons</h3>
-        <p>The easiest way: install it from the official store with one click, and Edge keeps it updated automatically.</p>
+        <p>The easiest way: install it from the official store with one click, and Edge keeps it updated automatically. Store copies never contact GitHub.</p>
         <p style="margin-top:14px"><a class="btn primary" href="https://microsoftedge.microsoft.com/addons/detail/lyrics-translate-romanize-for-amazon-music/jjfhmmdjbkcamelimddcogoopaljflff">Get it on Microsoft Edge Add-ons</a></p></div>
       <div class="card"><h3>Load unpacked (Chrome and other browsers)</h3>
         <ol class="steps">
@@ -167,7 +170,8 @@
           <li>Turn on <b>Developer mode</b>.</li>
           <li>Click <b>Load unpacked</b> and pick the folder that contains <code>manifest.json</code>.</li>
           <li>Open <a href="https://music.amazon.com">music.amazon.com</a>, play a song and open the lyrics view.</li>
-        </ol></div>
+        </ol>
+        <p class="upd-note"><b>Unpacked copies tell you when a new version is out</b> (a small NEW badge and a download link in the popup) <b>and have a Check for updates button.</b> To update, unzip the new ZIP over your folder and press <b>Reload</b> on the extension card.</p></div>
     </div>
     <p class="note" style="margin-top:18px">Works on music.amazon.com (not regional domains such as .co.jp or .de). The Google Translate web endpoint is unofficial and rate-limited; if it refuses requests, lines stay as they are and the extension retries about a minute later.</p>
   </div>

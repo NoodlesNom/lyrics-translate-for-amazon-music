@@ -19,11 +19,19 @@
   .note { color: #25d1da; } .note[data-kind=none], .note[data-kind=error] { color: #ffb300; }
   .note[data-kind=amazon], .note[data-kind=checking], .note[data-kind=off] { color: rgba(255,255,255,.6); }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: #8a8f91; }
+  .upd { margin: -2px 0 12px; padding: 8px 10px; border: 1px solid #1a6fd1; border-radius: 8px; background: rgba(26,111,209,.16); font-size: 12px; }
+  .upd .hint { margin-top: 3px; font-size: 11px; color: rgba(255,255,255,.65); }
+  .updrow { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; }
+  #updBtn { flex: none; padding: 4px 10px; background: #1c1f20; color: #fff; border: 1px solid #3a3f41; border-radius: 6px; font: inherit; font-size: 12px; cursor: pointer; }
+  #updBtn:disabled { opacity: .6; cursor: default; }
+  #updMsg { margin: 0; }
   [data-state=green] .dot { background: #3ddc84; } [data-state=amber] .dot { background: #ffb300; } [data-state=red] .dot { background: #ff5252; }
 </style>
 </head>
 <body>
   <h1>Lyrics Translate</h1>
+  <div id="updNew" class="upd" hidden><b>Update available: <span id="updVer"></span></b> · <a id="updLink" href="#" target="_blank" rel="noopener noreferrer">Download</a>
+    <div class="hint">Download the ZIP, unzip it over your extension folder, then press Reload in <span id="updPage">edge://extensions</span>.</div></div>
   <label>Translate to
     <select id="tl">
       <option value="en">English</option><option value="es">Spanish</option><option value="fr">French</option>
@@ -57,8 +65,9 @@
   <label>Show original lyrics <input type="checkbox" id="orig"></label>
   <label>Show floating button <input type="checkbox" id="float"></label>
   <label title="When Amazon has no lyrics for a song, look it up on LRCLIB (lrclib.net) and show them in Amazon's full view, where its lyrics normally appear">Find lyrics when Amazon has none <input type="checkbox" id="lrclib"></label>
+  <div id="updRow" class="updrow" hidden><button id="updBtn" title="Unpacked copy: ask GitHub for the latest version number">Check for updates</button><span id="updMsg" class="status"></span></div>
   <div id="counter" class="status" title="Per translator: songs fully translated into the selected language"></div>
-  <p>Lyric lines are sent to Google (Translate, or Gemini if chosen) to be translated. For songs Amazon has no lyrics for, the title, artist and duration are sent to LRCLIB. <a href="#" id="settings">Settings</a></p>
+  <p>Lyric lines are sent to Google (Translate, or Gemini if chosen) to be translated. For songs Amazon has no lyrics for, the title, artist and duration are sent to LRCLIB.<span id="updPriv" hidden> This unpacked copy asks GitHub for the latest version number about once a day.</span> <a href="#" id="settings">Settings</a></p>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -99,13 +99,14 @@ const near = (a, b, tol = 12) => Math.abs(a - b) <= tol;
 
 (async () => {
   const manifest = JSON.parse(fs.readFileSync(EXT + '/manifest.json', 'utf8'));
-  check('manifest 1.3.3: no new permissions (storage + the same four hosts)', manifest.version === '1.3.3' && JSON.stringify(manifest.permissions) === '["storage"]'
+  check('manifest 1.3.4: no new permissions (storage + the same four hosts)', manifest.version === '1.3.4' && JSON.stringify(manifest.permissions) === '["storage"]'
     && JSON.stringify(manifest.host_permissions) === JSON.stringify(['https://clients5.google.com/*', 'https://translate.googleapis.com/*', 'https://generativelanguage.googleapis.com/*', 'https://lrclib.net/*']));
   const src = fs.readFileSync(EXT + '/content.js', 'utf8') + fs.readFileSync(EXT + '/content.css', 'utf8');
   check('old side panel code/CSS removed (no .amlt-lrc, no minimize/hide buttons)', !/amlt-lrc|amlt-lrc-min|data-act|lrcHidden|lrcMin/.test(src));
 
   const ctx = await chromium.launchPersistentContext('', { channel: 'chromium', headless: true, viewport: VP,
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`] });
+  await ctx.route(/api\.github\.com/, (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ tag_name: 'v' + JSON.parse(fs.readFileSync(EXT + '/manifest.json', 'utf8')).version, html_url: 'https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest' }) })); // v1.3.4 update check (unpacked): mocked, same version
   await ctx.route(/lrclib\.net/, onLrclib);
   await ctx.route(/clients5\.google\.com|translate\.googleapis\.com/, onGoogle);
   // Gemini (MOCKED, placeholder key, only set in section 10): records requests; non-Latin lines → "Gemini line <n>", others unchanged.
@@ -180,7 +181,7 @@ const near = (a, b, tol = 12) => Math.abs(a - b) <= tol;
   check('normal page: badge absent → looked up only after the ~1.8 s settle (a decoy badge elsewhere is ignored)', early === 0 && lReqs.length === 1 && lReqs[0].path === '/api/get', `reqsAt1s=${early} reqs=${JSON.stringify(lReqs.map((r) => r.path))}`);
   check('normal page: NO lyrics panel at all (only the floating button is ours)', !(await ours(page)) && JSON.stringify(normalKids) === '["amlt-float"]', JSON.stringify(normalKids));
   check('request: /api/get with the mini-player title, artist (aria-labels) and duration from the slider label (whole seconds)', JSON.stringify(lReqs[0] && lReqs[0].q) === JSON.stringify({ track_name: 'Glass Harbor (Test)', artist_name: 'Mock Singer', duration: '200' }), JSON.stringify(lReqs[0] && lReqs[0].q));
-  check('request: identifies the client via the Lrclib-Client header', /^Lyrics Translate & Romanize for Amazon Music v1\.3\.3 \(https:\/\/github\.com\/NoodlesNom\/lyrics-translate-for-amazon-music\)$/.test(lReqs[0] && lReqs[0].client), lReqs[0] && lReqs[0].client);
+  check('request: identifies the client via the Lrclib-Client header', (lReqs[0] && lReqs[0].client) === `Lyrics Translate & Romanize for Amazon Music v${manifest.version} (https://github.com/NoodlesNom/lyrics-translate-for-amazon-music)`, lReqs[0] && lReqs[0].client);
   lReqs = [];
   await page.click('button[aria-label="Enter Full Screen"]');
   const t0 = Date.now();

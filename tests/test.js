@@ -68,6 +68,7 @@ const isLatin = (s) => !/[^\P{L}\p{Script=Latin}]/u.test(s);
     channel: 'chromium', headless: true, viewport: { width: 1100, height: 1000 },
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
   });
+  await ctx.route(/api\.github\.com/, (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ tag_name: 'v' + JSON.parse(fs.readFileSync(EXT + '/manifest.json', 'utf8')).version, html_url: 'https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest' }) })); // v1.3.4 update check (unpacked): mocked, same version
   await ctx.route(/clients5\.google\.com|translate\.googleapis\.com/, onTranslate);
   let lrclibHits = 0; // songs here all have Amazon lyrics (badge shown), so LRCLIB must never be asked
   await ctx.route(/lrclib\.net/, (r) => { lrclibHits++; r.fulfill({ status: 404, body: '' }); });

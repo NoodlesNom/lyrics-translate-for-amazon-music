@@ -39,6 +39,10 @@ When Gemini is on, **the song's lyric lines are sent to Google's Gemini API**, o
 - **Cache:** each song is fetched once. Found lyrics are kept in the same cache as translations (same 2000-song LRU). "Not found" is remembered for 7 days, then the song is checked again. If LRCLIB is rate-limiting (HTTP 429), the extension waits as long as its `Retry-After` header says.
 - **Timing:** the playback position is read from a page `<audio>`/`<video>` element if one is reachable, otherwise from the player's progress slider (the mini-player's, or any slider labelled "Playback … of …" in the full view): its label "Playback 1:23 of 3:45" (m:ss or h:mm:ss) and its `aria-valuenow`/`aria-valuemax` when present. That clock only changes once a second, so the extension extrapolates between ticks while playing and stops as soon as it stops or the Play/Pause button shows "Play".
 
+**Update notice (unpacked copies only, since 1.3.4).** A copy installed with **Load unpacked** can't update itself, so it tells you when a new version is out. About once a day (checked when the extension's background worker starts or is used, about 5 seconds after it starts; a failed check is retried after 3 hours) it asks GitHub's public API for the latest release of this project (`GET https://api.github.com/repos/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest`, without cookies or any login) and compares its version number with the installed one (numerically, so 1.3.10 is newer than 1.3.9). If it's newer, the toolbar icon gets a small blue **NEW** badge and the popup shows "Update available: vX.Y.Z · Download" (a link to the release page) with a one-line how-to: download the ZIP, unzip it over your extension folder, then press **Reload** in `edge://extensions`. The badge goes away once the versions match. The popup also has a **Check for updates** button that shows "Checking…", then "You're up to date (vX.Y.Z)" or the update line; clicks within a minute of the last check reuse it ("Checked just now") instead of asking again, and offline or rate-limit errors (HTTP 403/429) show a short message. Only the request itself reaches GitHub (the browser adds your IP address and user agent, as with any request); nothing about you, your songs or your settings is sent. The last check's time and result are kept in `chrome.storage.local`.
+
+The install type comes from `chrome.management.getSelf()` (`installType` is `development` for unpacked copies), which needs no `management` permission. **Copies from Microsoft Edge Add-ons (or any install that isn't `development`, and always the store ID `jjfhmmdjbkcamelimddcogoopaljflff`) never contact GitHub** and show no badge, button or update line; the browser updates them automatically. No permission was added for this: `api.github.com` allows cross-origin requests, and the daily timing needs no `alarms`.
+
 Nothing else is sent anywhere: no cookies, no song history, no analytics.
 
 **Cache.** Results are cached in the browser (`chrome.storage.local`): up to 2000 songs, each with up to 400 lines, stored separately per translator and target language. When the cache is full, or the browser's ~10 MB storage limit is reached, the least recently played songs are removed first. Switching translators doesn't reuse the other translator's results.
@@ -52,7 +56,7 @@ Permissions (and why each is needed):
 - Host access to `https://lrclib.net/*`: the LRCLIB lyrics API, contacted only for songs Amazon has no lyrics for (title, artist and duration), and only while **Find lyrics when Amazon has none** is on.
 - `web_accessible_resources` (`popup.html`, `popup.js`, `icons/icon48.png`, only for `https://music.amazon.com/*`): lets the floating button show its icon and open the popup as an in-page panel.
 
-No other permissions are requested (no `tabs`, no access to other sites, no cookies, no history).
+No other permissions are requested (no `tabs`, no `management`, no `alarms`, no access to other sites, no cookies, no history). The update check of unpacked copies needs none: `chrome.management.getSelf()` works without the `management` permission and GitHub's API sends CORS headers.
 
 ## Install in Microsoft Edge
 
@@ -61,7 +65,7 @@ No other permissions are requested (no `tabs`, no access to other sites, no cook
 3. Click **Load unpacked** and select this folder (the one that contains `manifest.json`).
 4. Open Amazon Music, play a song, and open the lyrics view.
 
-**After updating the files:** go to `edge://extensions`, click **Reload** on the extension card, then refresh the Amazon Music tab.
+**After updating the files:** go to `edge://extensions`, click **Reload** on the extension card, then refresh the Amazon Music tab. Unpacked copies tell you when a new version is out (a **NEW** badge on the icon and a line in the popup) and have a **Check for updates** button; the ZIP is on the [latest release](https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest). Copies installed from Microsoft Edge Add-ons update automatically.
 
 ## Known limits
 

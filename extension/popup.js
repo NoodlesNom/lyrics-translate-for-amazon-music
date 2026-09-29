@@ -110,6 +110,31 @@ $('force').addEventListener('click', async () => {
   $('force').disabled = !tabId;
 });
 
+// Update notice: unpacked copies only. background.js answers { store: true } for store copies (and never contacts GitHub
+// for them), and then nothing of this is shown.
+const UPD_ERR = { offline: "Couldn't reach GitHub. Check your connection and try again.", ratelimit: 'GitHub is limiting requests right now. Try again later.',
+  http: "Couldn't read the latest version from GitHub.", none: 'No releases published yet.' };
+$('updPage').textContent = /\bEdg\//.test(navigator.userAgent) ? 'edge://extensions' : 'chrome://extensions';
+function showUpdate(u, msg) {
+  const on = !!u && u.store === false;
+  $('updRow').hidden = $('updPriv').hidden = !on;
+  $('updNew').hidden = !(on && u.newer);
+  if (!on) return;
+  if (u.newer) { $('updVer').textContent = 'v' + u.latest; $('updLink').href = u.url; }
+  if (msg === 'click') {
+    const text = u.err ? UPD_ERR[u.err] || UPD_ERR.http : u.newer ? `Update available: v${u.latest}` : `You're up to date (v${u.current})`;
+    $('updMsg').textContent = u.reused ? `Checked just now · ${text}` : text;
+  } else if (msg === 'open') $('updMsg').textContent = u.at ? `Last checked ${ago(Date.now() - u.at)}` : '';
+}
+const loadUpdate = async (msg) => showUpdate(await chrome.runtime.sendMessage({ type: 'update' }).catch(() => null), msg);
+$('updBtn').addEventListener('click', async () => {
+  $('updBtn').disabled = true;
+  $('updMsg').textContent = 'Checking…';
+  const u = await chrome.runtime.sendMessage({ type: 'update', manual: true }).catch(() => null);
+  $('updBtn').disabled = false;
+  if (u) showUpdate(u, 'click'); else $('updMsg').textContent = "Couldn't check right now. Try again.";
+});
+
 let timer = 0;
 const refresh = () => { clearTimeout(timer); timer = setTimeout(render, 100); };
 
@@ -127,7 +152,9 @@ const showTranslator = async (value) => {
   $('size').value = String(s.size);
   render();
   findSong();
+  loadUpdate('open');
   chrome.storage.onChanged.addListener(async (changes, area) => {
+    if (area === 'local' && changes.upd) loadUpdate();
     if (area === 'sync' && changes.translator) await showTranslator(changes.translator.newValue);
     refresh();
     findSong();

@@ -1,5 +1,5 @@
 // Background service worker: translation requests (Gemini with the user's key, or Google Translate), LRCLIB lyrics
-// lookups (only for songs Amazon has no lyrics for) and the cache.
+// lookups (only for songs Amazon has no lyrics for), the cache, and (unpacked copies only) the update check.
 'use strict';
 
 // Google Translate web endpoints (same format; the second is tried if the first fails). Always used for romanization.
@@ -52,8 +52,9 @@ const simplify = (s) => s.toLowerCase().replace(/[\s\p{P}]+/gu, ' ').trim();
 const fetchT = (url, opts) => fetch(url, { ...opts, credentials: 'omit', signal: AbortSignal.timeout(LIMITS.timeoutMs) });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  autoCheckSoon(); // unpacked copies: the daily update check piggybacks on normal activity (no alarms permission)
   const job = msg && msg.type === 'lyrics' ? handle(msg) : msg && msg.type === 'testKey' ? testKey(msg.key)
-    : msg && msg.type === 'lrclib' ? lrclib(msg) : null;
+    : msg && msg.type === 'lrclib' ? lrclib(msg) : msg && msg.type === 'update' ? updateInfo(msg.manual) : null;
   if (!job) return;
   job.then(sendResponse, (e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
   return true;
@@ -66,6 +67,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   for (const k of Object.keys(all)) if (k.startsWith('song:') && !(k.slice(5) in idx)) idx[k.slice(5)] = all[k].ts || 0;
   await chrome.storage.local.set({ idx });
   await chrome.storage.local.remove('lyricsBtnSeen'); // v1.3.0 detection state, no longer used
+  await applyBadge(); // after an update the versions may match now: clear the badge
 });
 
 // lines = all unique lyric lines of the current song, in order.
@@ -441,3 +443,103 @@ async function storeLrc(key, value) {
     await chrome.storage.local.set(data).catch((e2) => console.warn('[lyrics-translate] LRCLIB cache write failed:', e2.message || e2));
   }
 }
+
+// ---------- Update notice: ONLY for unpacked ("Load unpacked") copies ----------
+// Store copies are updated by the browser and never contact GitHub: no request, no badge, no popup UI.
+// Install type comes from chrome.management.getSelf(), which needs no "management" permission. The store ID counts as
+// a store copy whatever getSelf says. Unpacked copies read the latest release's version number from GitHub's public API
+// (no host permission needed: api.github.com answers with Access-Control-Allow-Origin: *; no cookies, nothing personal
+// sent) about once a day, checked when the service worker starts or gets a message (popup, content script), so no
+// "alarms" permission either. The popup's "Check for updates" button asks too, at most once a minute.
+const STORE_ID = 'jjfhmmdjbkcamelimddcogoopaljflff';
+const REPO = 'https://github.com/NoodlesNom/lyrics-translate-for-amazon-music';
+const RELEASES_API = 'https://api.github.com/repos/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest';
+const UPD = { dayMs: 864e5, retryMs: 3 * 36e5, cooldownMs: 60e3, startDelayMs: 5000 }; // failed checks are retried after 3 h
+
+const isStoreCopy = (id, installType) => id === STORE_ID || installType !== 'development';
+let selfType = null;
+async function isUnpacked() {
+  if (chrome.runtime.id === STORE_ID) return false;
+  if (!selfType) selfType = chrome.management && chrome.management.getSelf ? chrome.management.getSelf().then((i) => i.installType, () => 'unknown') : Promise.resolve('unknown');
+  return !isStoreCopy(chrome.runtime.id, await selfType);
+}
+
+// "v1.3.10" → [1, 3, 10]; numeric per part, missing parts are 0 (1.4 > 1.3.9, 1.3.10 > 1.3.9, 1.3.4.1 > 1.3.4).
+const verParts = (v) => { const m = /^\s*v?(\d+(?:\.\d+)*)/i.exec(String(v || '')); return m ? m[1].split('.').map(Number) : null; };
+function isNewer(latest, current) {
+  const a = verParts(latest), b = verParts(current);
+  if (!a || !b) return false;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+  return false;
+}
+const currentVersion = () => chrome.runtime.getManifest().version;
+
+// upd (chrome.storage.local) = { at: last check time, latest: '1.3.5', url: release page, err: '' | 'offline' | 'ratelimit' | 'http' }
+async function applyBadge(upd) {
+  if (!chrome.action) return;
+  if (!(await isUnpacked())) return chrome.action.setBadgeText({ text: '' });
+  if (!upd) upd = (await chrome.storage.local.get('upd')).upd || {};
+  const newer = isNewer(upd.latest, currentVersion());
+  await chrome.action.setBadgeText({ text: newer ? 'NEW' : '' });
+  if (newer) {
+    await chrome.action.setBadgeBackgroundColor({ color: '#1a6fd1' });
+    if (chrome.action.setBadgeTextColor) await chrome.action.setBadgeTextColor({ color: '#ffffff' }).catch(() => {});
+  }
+}
+
+let updJob = null;
+function checkNow() {
+  return updJob || (updJob = (async () => {
+    const { upd: old = {} } = await chrome.storage.local.get('upd');
+    const upd = { latest: old.latest || '', url: old.url || '', at: Date.now(), err: '' }; // a failed check keeps the last known release
+    try {
+      const res = await fetch(RELEASES_API, { credentials: 'omit', cache: 'no-store', headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(15000) });
+      if (res.status === 403 || res.status === 429) upd.err = 'ratelimit';
+      else if (res.status === 404) upd.err = 'none';
+      else if (!res.ok) upd.err = 'http';
+      else {
+        const rel = await res.json();
+        if (!verParts(rel && rel.tag_name)) upd.err = 'http';
+        else {
+          upd.latest = verParts(rel.tag_name).join('.');
+          upd.url = typeof rel.html_url === 'string' && rel.html_url.startsWith(REPO + '/releases/') ? rel.html_url : REPO + '/releases/latest';
+        }
+      }
+    } catch (e) {
+      upd.err = 'offline';
+    }
+    await chrome.storage.local.set({ upd });
+    await applyBadge(upd);
+    return upd;
+  })().finally(() => { updJob = null; }));
+}
+
+let autoCheckedAt = 0;
+async function autoCheck() {
+  if (Date.now() - autoCheckedAt < 60e3) return; // at most one storage look per minute per worker
+  autoCheckedAt = Date.now();
+  if (!(await isUnpacked())) return;
+  const { upd = {} } = await chrome.storage.local.get('upd');
+  const wait = upd.err && upd.err !== 'none' ? UPD.retryMs : UPD.dayMs;
+  if (!upd.at || Date.now() - upd.at >= wait || upd.at > Date.now()) await checkNow();
+}
+function autoCheckSoon() { autoCheck().catch((e) => console.warn('[lyrics-translate] update check failed:', e.message || e)); }
+
+// Popup: { store: true } for store copies (the popup then shows nothing). Otherwise the current state; manual = the
+// "Check for updates" button, which reuses a result younger than a minute ("Checked just now") instead of asking again.
+async function updateInfo(manual) {
+  if (!(await isUnpacked())) return { store: true };
+  let { upd } = await chrome.storage.local.get('upd');
+  let reused = false;
+  if (manual) {
+    if (upd && upd.at && Date.now() - upd.at < UPD.cooldownMs && !updJob) reused = true;
+    else upd = await checkNow();
+  }
+  upd = upd || {};
+  return { store: false, current: currentVersion(), latest: upd.latest || '', url: upd.url || REPO + '/releases/latest', at: upd.at || 0,
+    err: upd.err || '', newer: isNewer(upd.latest, currentVersion()), reused };
+}
+
+// Worker start (browser start, first use, after an idle stop): refresh the badge and check if a day has passed.
+applyBadge().catch(() => {});
+setTimeout(autoCheckSoon, UPD.startDelayMs);
