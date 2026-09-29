@@ -100,13 +100,18 @@
     floating();
     if (dead) return;
     const amazon = findLines();
+    // Full view + Amazon lyrics: our own list (same stage as LRCLIB), filled by sweeping their scroller.
+    // keepCheck must not run while that list is up: it would fight the sweep and a hidden scroller.
+    const azOn = syncAmazonStage(amazon);
     checkLrc(amazon.length > 0);
-    watchAmazon(amazon);
+    if (azOn) unwatchAmazon();
+    else watchAmazon(amazon);
     if (!settings.rom && !settings.trans) return;
-    const lrcMode = !amazon.length && !!lrc;
+    const lrcMode = !azOn && !amazon.length && !!lrc;
+    const hosts = azOn ? az.els : lrcMode ? lrc.els : amazon;
     const need = new Set();
     const texts = [];
-    for (const el of lrcMode ? lrc.els : amazon) {
+    for (const el of hosts) {
       const text = lineText(el);
       if (!text) continue;
       if (!/\p{L}/u.test(text)) { if (!ownBlock(el)) render(el, text, {}, ''); continue; } // e.g. "♪": size only
@@ -170,7 +175,8 @@
     }
   }
 
-  // The block is appended INSIDE the h4 after its text node, so it inherits color, alignment and the
+  // The block is appended INSIDE the lyric element after its text node (an Amazon h4, or one of our .amlt-stage-line
+  // rows), so it inherits color, alignment and the
   // active-line highlight (and can become the main line when originals are hidden). React nodes are never moved or removed; if React resets the h4's
   // textContent our block is wiped and the next scan re-adds it.
   // A romanized LRCLIB line (.amlt-roman, v1.3.6) gets a block of its own: the line's text IS the romanization, so it goes in
@@ -291,13 +297,15 @@
   });
 
   // ===================== Amazon's full view: keep the current line on screen =====================
+  // Only when our own full-view list is NOT showing (see syncAmazonStage). While that overlay is up, Amazon's rows
+  // are not annotated: during the sweep their scroller is still laid out (our list covers it) and afterwards it is
+  // display:none. keepCheck must not run in either state: it used to correct THEIR scrollTop, which fights the sweep
+  // and must not move a hidden scroller. Left in place for a lyrics list that is on screen but outside that overlay.
   // Amazon's lyrics scroller (Stage_OverlaysContainer > scroller > list > one row per line > h4) scrolls by ITS row
-  // heights, so after a seek, with our blocks making every row taller, its current line (the h4 with inline color white)
-  // can land far below the visible area. While Amazon's lines are shown we watch that scroller and, whenever the current
-  // line changes, the scroller scrolls or rows resize, center the current row if it isn't fully visible or sits more
-  // than a quarter of the scroller's height from the middle. Smooth for short moves, instant for jumps of more than a
-  // screen. Paused for 3 s after the user wheels/touches/drags the lyrics. Our own LRCLIB lyrics (.amlt-stage) have
-  // their own scroller and never go through this.
+  // heights. While this watch is active, whenever the current line (the h4 with inline color white) changes, the
+  // scroller scrolls or rows resize, center the current row if it isn't fully visible or sits more than a quarter of
+  // the scroller's height from the middle. Smooth for short moves, instant for jumps of more than a screen. Paused for
+  // 3 s after the user wheels/touches/drags the lyrics.
   const KEEP_DELAY = 100, KEEP_MAX_WAIT = 300, USER_PAUSE = 3000, BAND = 0.25, PER_SEC = 4;
   const USER_EVENTS = ['wheel', 'touchmove', 'pointerdown'];
   let keep = null; // { sc, list, mo, ro, timer, first, userAt, ownUntil, hits, row, rowN, lastAt, wanted }
@@ -575,40 +583,428 @@
     });
   }
 
-  // Our own fixed-position element (a <body> child), NOT a child of Amazon's lyrics column: that column is React-managed
-  // (it can be re-rendered or collapsed at any time, which would wipe foreign children), while a body child survives
-  // re-renders and is simply placed over the empty spot. content.js keeps its box on Amazon's lyrics column (see placeLrc).
-  function showLrc(p, data, st) {
-    const synced = Array.isArray(data.synced) && data.synced.length > 0;
-    const rows = synced ? data.synced : (data.plain || []).map((t) => [null, t]);
-    if (!rows.length || !document.body) return;
+  // Shared full-view lyric list (.amlt-stage): LRCLIB when Amazon has no lyrics, and Amazon's own lines when it does.
+  // A fixed <body> child, never inside Amazon's column (React re-renders would wipe it, and their scroller must not move it).
+  function createStage({ aria, credit, creditTitle, plain, pad, specs }) {
     const root = document.createElement('div');
-    root.className = 'amlt-stage' + (synced ? '' : ' amlt-stage-plain');
+    root.className = 'amlt-stage' + (plain ? ' amlt-stage-plain' : '');
     root.setAttribute('role', 'region');
-    root.setAttribute('aria-label', 'Lyrics from LRCLIB');
+    root.setAttribute('aria-label', aria);
     const scroll = document.createElement('div');
     scroll.className = 'amlt-stage-scroll';
     const list = document.createElement('div');
     list.className = 'amlt-stage-list';
-    const roman = data.roman ? { lang: data.roman, lines: data.romanLines || [] } : null;
-    const els = rows.map(([, text]) => {
+    const els = specs.map((spec) => {
       const line = document.createElement('div');
-      line.className = 'amlt-stage-line' + (roman && roman.lines.includes(text) ? ' amlt-roman' : '');
+      line.className = 'amlt-stage-line' + (spec.roman ? ' amlt-roman' : '');
       line.dir = 'auto';
-      line.textContent = text || '\u266a';
+      line.textContent = spec.text || '\u266a';
       return line;
     });
     list.append(...els);
     scroll.append(list);
-    const credit = document.createElement('div');
-    credit.className = 'amlt-stage-credit';
-    credit.textContent = synced ? 'Lyrics from LRCLIB' : 'Lyrics from LRCLIB \u00b7 not synced';
-    credit.title = 'Amazon has no lyrics for this song. These come from lrclib.net.';
-    root.append(scroll, credit);
+    if (credit) {
+      const creditEl = document.createElement('div');
+      creditEl.className = 'amlt-stage-credit';
+      creditEl.textContent = credit;
+      if (creditTitle) creditEl.title = creditTitle;
+      root.append(scroll, creditEl);
+    } else root.append(scroll);
     let userAt = 0;
     for (const ev of ['wheel', 'touchmove', 'pointerdown']) scroll.addEventListener(ev, () => { userAt = Date.now(); }, { passive: true });
-    lrc = { id: p.id, key: p.key, root, scroll, list, els, synced, roman, verdict: null, times: synced ? rows.map(([t]) => t) : [], active: -1, jumped: false, box: '', userAt: () => userAt };
-    document.body.appendChild(root);
+    return { root, scroll, list, els, pad: !!pad, box: '', active: -1, jumped: false, userAt: () => userAt };
+  }
+  // Centers one of OUR lines. Does not read or write Amazon's scrollTop. Skipped for a few seconds after the user
+  // wheels or drags this scroller (same pause the LRCLIB list uses).
+  function scrollStageLine(stage, el) {
+    if (!stage || !el || Date.now() - stage.userAt() <= 4000) return;
+    stage.scroll.scrollTo({ top: el.offsetTop - stage.scroll.clientHeight / 2 + el.offsetHeight / 2, behavior: stage.jumped ? 'smooth' : 'auto' });
+    stage.jumped = true;
+  }
+  function placeStage(stage, st) {
+    if (!stage || !st) return;
+    const b = stageBox(st);
+    const sig = [b.left, b.top, b.width, b.height].join();
+    if (sig === stage.box) return;
+    stage.box = sig;
+    const ok = b.width >= 160 && b.height >= 120;
+    Object.assign(stage.root.style, { left: b.left + 'px', top: b.top + 'px', width: Math.max(0, b.width) + 'px', height: Math.max(0, b.height) + 'px' });
+    stage.root.classList.toggle('amlt-stage-off', !ok);
+    const pad = stage.pad ? Math.round(b.height * 0.4) + 'px' : '';
+    stage.list.style.paddingTop = stage.list.style.paddingBottom = pad;
+  }
+
+  // Amazon lines in the full view: show the same .amlt-stage list LRCLIB uses, immediately, from whatever rows are
+  // already mounted (often only a short window). Do not annotate those rows. Our list covers their column. Behind it,
+  // scroll their scroller from top to bottom so it mounts the rest, and keep every line text in order. Nothing is
+  // invented. When the pass finishes (the scroller is at the end, or a short beat adds no lines), set their scroller
+  // to display:none so it is not painted, and show the collected lines. The white h4 picks the current line while
+  // that node is in the DOM (inline color still updates under display:none). Once it is gone, the playback clock
+  // picks the line: observed seconds-per-line if the white row moved before it vanished, otherwise equal slices of
+  // the collected lines. Only OUR scroller moves. No lyric lines means this overlay never starts (LRCLIB only).
+  let az = null, azSc = null, azTimer = 0, azHarvest = null;
+  const HARVEST_BEAT = 160;
+  function amazonInView(lines) {
+    // Empty Amazon column: do not create the overlay and do not scroll that scroller. Lyric-less songs use LRCLIB only.
+    if (dead || !lines.length) return null;
+    const st = stageView();
+    if (!st || !st.box || !st.box.contains(lines[0])) return null;
+    return st;
+  }
+  function concealScroller(sc) {
+    if (sc && sc.style.display !== 'none') sc.style.setProperty('display', 'none', 'important');
+  }
+  function lyricsScroller(lines) {
+    if (azSc && azSc.isConnected && lines[0] && azSc.contains(lines[0])) return azSc;
+    return (lines[0] && scrollerOf(lines[0])) || (lines[0] && lines[0].closest(STAGE_LYRICS));
+  }
+  function linesIn(sc) {
+    if (!sc) return [];
+    return findLines().filter((el) => sc.contains(el));
+  }
+  // Where win sits inside collected, or -1. Exact slice, so a repeated block resolves to the first copy.
+  function sliceStart(collected, win) {
+    if (!win.length || win.length > collected.length) return -1;
+    outer: for (let s = 0; s <= collected.length - win.length; s++) {
+      for (let i = 0; i < win.length; i++) if (collected[s + i] !== win[i]) continue outer;
+      return s;
+    }
+    return -1;
+  }
+  // Forward sweep: append only the part of this mounted window that continues the lines already seen.
+  function mergeForward(collected, win) {
+    if (!win.length) return collected;
+    if (!collected.length) return win.slice();
+    let best = 0, at = 0;
+    for (let s = 0; s <= collected.length; s++) {
+      let n = 0;
+      while (n < win.length && s + n < collected.length && collected[s + n] === win[n]) n++;
+      const atEnd = s + n >= collected.length;
+      if (n > best || (n === best && n > 0 && atEnd)) { best = n; at = s; }
+    }
+    if (best > 0 && at + best >= collected.length) return collected.concat(win.slice(best));
+    if (sliceStart(collected, win) >= 0) return collected;
+    return collected.concat(win);
+  }
+  function sameSong(collected, win) {
+    if (!win.length) return true;
+    if (sliceStart(collected, win) >= 0 || win.join('\n') === collected.join('\n')) return true;
+    const have = new Set(collected);
+    return win.some((t) => have.has(t));
+  }
+  function stageLines(texts) {
+    const els = texts.map((text) => {
+      const line = document.createElement('div');
+      line.className = 'amlt-stage-line';
+      line.dir = 'auto';
+      line.textContent = text || '\u266a';
+      return line;
+    });
+    return els;
+  }
+  function refillStage(texts) {
+    const sig = texts.join('\n');
+    if (!az || az.sig === sig) { if (az) az.texts = texts.slice(); return; }
+    for (const el of az.els) { const b = ownBlock(el); if (b) blocks.delete(b); marks.delete(el); }
+    const els = stageLines(texts);
+    az.list.replaceChildren(...els);
+    az.els = els;
+    az.sig = sig;
+    az.texts = texts.slice();
+    az.active = -1;
+    az.jumped = false;
+  }
+  function applyActive(i) {
+    if (!az || i < 0 || i === az.active) return;
+    if (az.els[az.active]) az.els[az.active].classList.remove('amlt-stage-on');
+    az.active = i;
+    const el = az.els[i];
+    if (!el) return;
+    el.classList.add('amlt-stage-on');
+    scrollStageLine(az, el);
+  }
+  // White h4 -> index in the lines we are showing. -1 if there is no white h4.
+  function indexFromWhite(sc, texts) {
+    if (!sc) return -1;
+    const h4 = currentLine(sc);
+    const lines = linesIn(sc);
+    const local = h4 ? lines.indexOf(h4) : -1;
+    if (local < 0) return -1;
+    const win = lines.map(lineText);
+    if (win.join('\n') === texts.join('\n')) return local;
+    const start = sliceStart(texts, win);
+    return start >= 0 ? start + local : -1;
+  }
+  function stopHarvest() {
+    if (!azHarvest) return;
+    clearTimeout(azHarvest.timer);
+    azHarvest.done = true;
+    azHarvest = null;
+  }
+  function dropAmazonStage(restore) {
+    clearInterval(azTimer);
+    azTimer = 0;
+    stopHarvest();
+    if (az) {
+      if (az.mo) az.mo.disconnect();
+      for (const el of az.els) { const b = ownBlock(el); if (b) blocks.delete(b); }
+      az.root.remove();
+      az = null;
+    }
+    if (restore && azSc && azSc.isConnected) azSc.style.removeProperty('display');
+    if (restore) azSc = null;
+  }
+  function hideAmazonStage() { dropAmazonStage(true); }
+  function coverColor() {
+    const bg = getComputedStyle(document.body).backgroundColor;
+    return bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)' ? bg : '#000';
+  }
+  function watchAzScroller(sc) {
+    if (!az || az.mo) return;
+    az.mo = new MutationObserver(() => {
+      if (!az) return;
+      if (az.done) {
+        concealScroller(azSc);
+        const win = linesIn(azSc).map(lineText);
+        if (win.length && !sameSong(az.texts, win)) schedule(0);
+        else markAmazon();
+        return;
+      }
+      const h = azHarvest;
+      if (!h || h.done) return;
+      armHarvest(16);
+    });
+    az.mo.observe(sc, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style'] });
+  }
+  function harvestStep(sc, lines) {
+    const H = sc.clientHeight || 0;
+    if (lines.length >= 2) {
+      const a = lines[0].getBoundingClientRect();
+      const b = lines[lines.length - 1].getBoundingClientRect();
+      const span = b.bottom - a.top;
+      if (span > 40) return Math.max(32, Math.min(H ? H * 0.85 : span, span * 0.5));
+    }
+    return Math.max(48, H * 0.5 || 48);
+  }
+  function beginHarvest(sc) {
+    stopHarvest();
+    if (az) az.done = false;
+    azHarvest = { texts: [], timer: 0, seq: 0, done: false, wait: false, key: '', at: 0, quiet: 0, nudges: 0 };
+    sc.style.scrollBehavior = 'auto';
+    if (sc.scrollTop > 2) {
+      azHarvest.wait = true;
+      azHarvest.key = linesIn(sc).map(lineText).join('\n');
+      azHarvest.at = Date.now();
+      sc.scrollTop = 0;
+    }
+    armHarvest(azHarvest.wait ? 20 : 0);
+  }
+  function finishHarvest() {
+    const h = azHarvest;
+    if (!h || h.done || !az) return;
+    h.done = true;
+    clearTimeout(h.timer);
+    const sc = azSc;
+    const prevActive = az.active;
+    const prev = az.texts.slice();
+    const texts = h.texts.length ? h.texts.slice() : prev;
+    refillStage(texts);
+    let idx = sc && sc.isConnected && sc.style.display !== 'none' ? indexFromWhite(sc, az.texts) : -1;
+    if (idx < 0 && prevActive >= 0) {
+      const start = sliceStart(az.texts, prev);
+      if (start >= 0) idx = start + prevActive;
+      else if (az.texts.length === prev.length) idx = prevActive;
+    }
+    az.done = true;
+    az.root.style.backgroundColor = '';
+    concealScroller(sc);
+    if (idx >= 0) applyActive(idx);
+    azHarvest = null;
+    schedule(0);
+  }
+  function armHarvest(ms) {
+    const h = azHarvest;
+    if (!h || h.done) return;
+    clearTimeout(h.timer);
+    const seq = ++h.seq;
+    h.timer = setTimeout(() => { if (azHarvest === h && h.seq === seq && !h.done) pumpHarvest(); }, ms);
+  }
+  function pumpHarvest() {
+    const h = azHarvest;
+    if (!h || h.done || !az || dead) return;
+    const sc = azSc;
+    if (!sc || !sc.isConnected) return finishHarvest();
+    const now = Date.now();
+    if (h.wait) {
+      const key = linesIn(sc).map(lineText).join('\n');
+      const changed = key !== h.key;
+      if (!changed && now - h.at < HARVEST_BEAT) {
+        armHarvest(30);
+        return;
+      }
+      h.wait = false;
+      if (!changed) {
+        const max = Math.max(0, sc.scrollHeight - sc.clientHeight);
+        const atEnd = max <= 1 || sc.scrollTop >= max - 2;
+        if (atEnd) return finishHarvest();
+        const next = Math.min(max, sc.scrollTop + harvestStep(sc, linesIn(sc)));
+        h.nudges++;
+        if (next <= sc.scrollTop + 1 || h.nudges >= 3) return finishHarvest();
+        h.key = key;
+        h.at = now;
+        h.wait = true;
+        sc.scrollTop = next;
+        clearTimeout(h.timer);
+        armHarvest(30);
+        return;
+      }
+      h.nudges = 0;
+    }
+    const lines = linesIn(sc);
+    const before = h.texts.length;
+    h.texts = mergeForward(h.texts, lines.map(lineText));
+    const grew = h.texts.length > before;
+    const max = Math.max(0, sc.scrollHeight - sc.clientHeight);
+    const atEnd = max <= 1 || sc.scrollTop >= max - 2;
+    if (grew) h.quiet = 0;
+    if (atEnd) {
+      if (!h.quiet) h.quiet = now;
+      if (!grew && now - h.quiet >= HARVEST_BEAT) return finishHarvest();
+      armHarvest(HARVEST_BEAT);
+      return;
+    }
+    h.quiet = 0;
+    const next = Math.min(max, sc.scrollTop + harvestStep(sc, lines));
+    if (next <= sc.scrollTop + 1) return finishHarvest();
+    h.wait = true;
+    h.key = lines.map(lineText).join('\n');
+    h.at = now;
+    sc.scrollTop = next;
+    clearTimeout(h.timer);
+    armHarvest(30);
+  }
+  // Remember (clock position, line index) while Amazon still paints a white h4, so a later clock fallback can
+  // keep that line's pace instead of slicing the song into equal parts. Seeks are just a new position.
+  function noteAmazonPace(i) {
+    if (!az || i < 0) return;
+    const c = readClock();
+    if (!c || c.pos == null) return;
+    const pos = position(c);
+    const samples = az.pace || (az.pace = []);
+    const last = samples[samples.length - 1];
+    if (last && last.i === i) return;
+    samples.push({ i, pos });
+    if (samples.length > 6) samples.shift();
+    const a = samples[samples.length - 2];
+    if (!a) return;
+    const di = samples[samples.length - 1].i - a.i;
+    const dp = pos - a.pos;
+    if (!di || dp <= 0.4) return;
+    const per = dp / di;
+    if (per < 0.4 || per > 30) return;
+    az.perLine = per;
+    az.paceAt = { i, pos };
+  }
+  // No timestamps on Amazon lines. Prefer the pace observed from the white row; otherwise equal slices of duration.
+  function indexFromClock() {
+    if (!az) return -1;
+    const n = az.els.length;
+    if (!n) return -1;
+    const c = readClock();
+    if (!c || c.pos == null) return -1;
+    const pos = position(c);
+    if (az.perLine > 0 && az.paceAt) {
+      const i = Math.round(az.paceAt.i + (pos - az.paceAt.pos) / az.perLine);
+      return Math.max(0, Math.min(n - 1, i));
+    }
+    if (!(c.dur > 0)) return -1;
+    let i = Math.floor(Math.min(1, Math.max(0, pos / c.dur)) * n);
+    if (i >= n) i = n - 1;
+    return Math.max(0, i);
+  }
+  function markAmazon() {
+    if (!az || !azSc) return;
+    const lines = linesIn(azSc);
+    const i = lines.length ? indexFromWhite(azSc, az.texts) : -1;
+    if (i >= 0) noteAmazonPace(i);
+    // While the sweep is still mounting rows, only trust a white h4 that belongs to the list on screen.
+    // Do not invent a line from the clock yet: a missing white row before the hide means "not current", not line 0.
+    if (!az.done && (!lines.length || lines.map(lineText).join('\n') !== az.sig)) return;
+    if (i >= 0) { applyActive(i); return; }
+    if (!az.done) return;
+    const j = indexFromClock();
+    if (j >= 0) applyActive(j);
+  }
+  function tickAmazon() {
+    if (!az || dead) return;
+    const lines = findLines();
+    const st = amazonInView(lines);
+    if (!st) { hideAmazonStage(); return schedule(0); }
+    const sc = lyricsScroller(lines);
+    if (!sc) return;
+    if (sc !== azSc) {
+      azSc = sc;
+      if (az.mo) { az.mo.disconnect(); az.mo = null; }
+      watchAzScroller(sc);
+      if (!az.done) beginHarvest(sc);
+    }
+    if (az.done) concealScroller(azSc);
+    else az.root.style.backgroundColor = coverColor();
+    placeStage(az, st);
+    az.root.classList.toggle('amlt-stage-covered', coveredStage(az, st));
+    const win = linesIn(azSc).map(lineText);
+    if (az.done && win.length && !sameSong(az.texts, win)) return schedule(0);
+    markAmazon();
+  }
+  function syncAmazonStage(lines) {
+    const st = amazonInView(lines);
+    if (!st) { hideAmazonStage(); return false; }
+    unwatchAmazon(); // do not fight Amazon's scroll with keepCheck while our list is up
+    const sc = lyricsScroller(lines);
+    if (!sc) { hideAmazonStage(); return false; }
+    for (const el of lines) {
+      const b = ownBlock(el);
+      if (b) { blocks.delete(b); b.remove(); }
+      marks.delete(el);
+    }
+    const win = lines.map(lineText);
+    if (az && az.root.isConnected && (sc !== azSc || (az.done && !sameSong(az.texts, win)))) hideAmazonStage();
+    if (!az) {
+      azSc = sc;
+      az = createStage({ aria: 'Lyrics', credit: '', plain: false, pad: true, specs: win.map((text) => ({ text, roman: false })) });
+      az.sig = win.join('\n');
+      az.texts = win.slice();
+      az.done = false;
+      document.body.appendChild(az.root);
+      watchAzScroller(sc);
+      if (!azTimer) azTimer = setInterval(tickAmazon, 200);
+      beginHarvest(sc);
+    }
+    if (!az.done) az.root.style.backgroundColor = coverColor();
+    else concealScroller(sc);
+    placeStage(az, st);
+    markAmazon();
+    return true;
+  }
+
+  // Our own fixed-position element (a <body> child), NOT a child of Amazon's lyrics column: that column is React-managed
+  // (it can be re-rendered or collapsed at any time, which would wipe foreign children), while a body child survives
+  // re-renders and is simply placed over the empty spot. content.js keeps its box on Amazon's lyrics column (see placeStage).
+  function showLrc(p, data, st) {
+    const synced = Array.isArray(data.synced) && data.synced.length > 0;
+    const rows = synced ? data.synced : (data.plain || []).map((t) => [null, t]);
+    if (!rows.length || !document.body) return;
+    const roman = data.roman ? { lang: data.roman, lines: data.romanLines || [] } : null;
+    const stage = createStage({
+      aria: 'Lyrics from LRCLIB',
+      credit: synced ? 'Lyrics from LRCLIB' : 'Lyrics from LRCLIB \u00b7 not synced',
+      creditTitle: 'Amazon has no lyrics for this song. These come from lrclib.net.',
+      plain: !synced,
+      pad: synced,
+      specs: rows.map(([, text]) => ({ text, roman: !!(roman && roman.lines.includes(text)) })),
+    });
+    lrc = { id: p.id, key: p.key, synced, roman, verdict: null, times: synced ? rows.map(([t]) => t) : [], ...stage };
+    document.body.appendChild(lrc.root);
     placeLrc(st);
     anchor = null;
     tickLrc();
@@ -651,29 +1047,18 @@
     }
     return { left: Math.round(left), top: Math.round(top), width: Math.round(width), height: Math.round(Math.min(bottom, H - 8) - top) };
   }
-  function placeLrc(st) {
-    if (!lrc || !st) return;
-    const b = stageBox(st);
-    const sig = [b.left, b.top, b.width, b.height].join();
-    if (sig === lrc.box) return;
-    lrc.box = sig;
-    const ok = b.width >= 160 && b.height >= 120;
-    Object.assign(lrc.root.style, { left: b.left + 'px', top: b.top + 'px', width: Math.max(0, b.width) + 'px', height: Math.max(0, b.height) + 'px' });
-    lrc.root.classList.toggle('amlt-stage-off', !ok);
-    // Synced: room above the first and below the last line, so the current line can sit in the middle like Amazon's.
-    const pad = lrc.synced ? Math.round(b.height * 0.4) + 'px' : '';
-    lrc.list.style.paddingTop = lrc.list.style.paddingBottom = pad;
-  }
+  function placeLrc(st) { placeStage(lrc, st); }
   // Hidden while something else of Amazon's (a menu, the queue) is drawn over the spot: the topmost page element at the
   // box's center must belong to the full view (or be one of its ancestors).
-  function coveredLrc(st) {
-    const r = lrc.root.getBoundingClientRect();
+  function coveredStage(stage, st) {
+    const r = stage.root.getBoundingClientRect();
     if (!r.width || !r.height || !document.elementsFromPoint) return false;
-    const top = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2).find((e) => !lrc.root.contains(e));
+    const top = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2).find((e) => !stage.root.contains(e));
     const anchorEl = st.box || st.art;
     const stageRoot = (anchorEl && anchorEl.closest('section[role="region"]')) || (st.art && st.box && common(st.art, st.box));
     return !!(top && stageRoot && !stageRoot.contains(top) && !top.contains(stageRoot));
   }
+  function coveredLrc(st) { return coveredStage(lrc, st); }
   function common(a, b) { for (let n = a; n; n = n.parentElement) if (n.contains(b)) return n; return null; }
 
   // Every 200 ms while shown: still valid (full view open, same song, Amazon still without lines)? Placement, cover
@@ -697,12 +1082,9 @@
     const el = lrc.els[i];
     if (!el) return;
     el.classList.add('amlt-stage-on');
-    if (Date.now() - lrc.userAt() > 4000) {
-      lrc.scroll.scrollTo({ top: el.offsetTop - lrc.scroll.clientHeight / 2 + el.offsetHeight / 2, behavior: lrc.jumped ? 'smooth' : 'auto' });
-      lrc.jumped = true;
-    }
+    scrollStageLine(lrc, el);
   }
-  window.addEventListener('resize', () => { if (lrc) placeLrc(stageView()); });
+  window.addEventListener('resize', () => { const st = stageView(); if (lrc) placeStage(lrc, st); if (az) placeStage(az, st); });
 
   // For the popup's "This song" notice: synced | unsynced (shown in the full view, or found and the full view is open) |
   // synced-closed | unsynced-closed (found, full view closed) | pending (looking it up) | none (Amazon has no lyrics and
@@ -721,6 +1103,7 @@
     observer.disconnect();
     clearTimeout(timer);
     hideLrc();
+    hideAmazonStage();
     unwatchAmazon();
   }
 
@@ -745,9 +1128,10 @@
   // full view closed. Songs shown from LRCLIB (Amazon has no lyrics) work the same way, keyed by the track.
   chrome.runtime.onMessage.addListener((msg, _sender, send) => {
     let els = dead ? [] : findLines();
-    const amazon = els.length > 0;
+    const amazon = els.length > 0 || !!(az && az.root && az.root.isConnected);
     const fromLrc = !amazon && !!lrc && !dead;
-    if (fromLrc) els = lrc.els;
+    if (!dead && az && az.root.isConnected && az.els.length) els = az.els;
+    else if (fromLrc) els = lrc.els;
     const texts = els.map(lineText).filter((t) => /\p{L}/u.test(t));
     const p = dead ? null : player();
     const now = p ? { title: p.title, artist: p.artist, lyrics: lyricsState(p, amazon, stageView()), lrc: lrcStatus() } : {};

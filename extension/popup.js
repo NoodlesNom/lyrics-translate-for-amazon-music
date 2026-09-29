@@ -202,7 +202,8 @@ for (const k of TOGGLES) $(k).addEventListener('change', (e) => chrome.storage.s
 // the window; below that cap only #main scrolls).
 if (window.top !== window) {
   document.documentElement.classList.add('in-panel');
-  addEventListener('keydown', (e) => { if (e.key === 'Escape') parent.postMessage('amlt-close', 'https://music.amazon.com'); });
-  new ResizeObserver(() => parent.postMessage({ amlt: 'height', h: Math.ceil(document.querySelector('.top').offsetHeight + $('main').scrollHeight) }, 'https://music.amazon.com')).observe($('content'));
+  const parentOrigin = (location.ancestorOrigins && location.ancestorOrigins[0]) || '*';
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') parent.postMessage('amlt-close', parentOrigin); });
+  new ResizeObserver(() => parent.postMessage({ amlt: 'height', h: Math.ceil(document.querySelector('.top').offsetHeight + $('main').scrollHeight) }, parentOrigin)).observe($('content'));
 }
 $('settings').addEventListener('click', (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });

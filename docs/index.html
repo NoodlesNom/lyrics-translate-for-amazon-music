@@ -101,6 +101,7 @@
     <h2>What's new</h2>
     <p class="sub">Recent versions, newest first. Full history and downloads in the <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases">releases</a>.</p>
     <div class="changelog">
+      <div class="card"><h3>1.3.7</h3><p>Fixed lyrics jumping when Amazon scrolls the current line.</p></div>
       <div class="card"><h3>1.3.6</h3><p>LRCLIB lyrics that are only a romanization (romaji, Korean romanization or pinyin) now show as the romanization line under the translation, and a copy in the original script is preferred when LRCLIB has one. With Gemini, the Original lyrics line shows a marked guess (≈) of the original script; without it, romanized Japanese is translated from a hiragana guess. Tidier popup checkboxes, and the floating button shows the Gemini status dot.</p></div>
       <div class="card"><h3>1.3.5</h3><p>Fixed: after jumping ahead in a song, the highlighted line could scroll off screen (worse with big text). It now comes straight back to the middle of the lyrics. Popup fits without scroll bars again.</p></div>
       <div class="card"><h3>1.3.4</h3><p>First public release with LRCLIB lyrics and the smarter language check (1.3.0–1.3.3 were test builds, released together here). Copies installed with Load unpacked now tell you when a new version is out (a NEW badge and a download link in the popup) and get a <b>Check for updates</b> button. Store copies update automatically, as before.</p></div>
@@ -179,7 +180,7 @@
         <p style="margin-top:14px"><a class="btn" href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest" title="Download the ZIP and load it unpacked">Get it on GitHub<span class="bver" data-ver="github"></span></a></p></div>
     </div>
     <p class="note versions" style="margin-top:18px">Microsoft Add-ons store updates can take up to a week because Microsoft reviews each one. The GitHub version is always the newest. <a href="#new">See what's changed</a>.</p>
-    <p class="note" style="margin-top:8px">Works on music.amazon.com (not regional domains such as .co.jp or .de). The Google Translate web endpoint is unofficial and rate-limited; if it refuses requests, lines stay as they are and the extension retries about a minute later.</p>
+    <p class="note" style="margin-top:8px">Works on the English Amazon Music sites: music.amazon.com, .ca, .co.uk, .com.au, .in, and .ae. Not on stores whose page is not in English, such as .co.jp or .de. The Google Translate web endpoint is unofficial and rate-limited; if it refuses requests, lines stay as they are and the extension retries about a minute later.</p>
   </div>
 </section>
 
