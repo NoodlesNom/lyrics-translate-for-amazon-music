@@ -135,8 +135,14 @@ function detectRoman(lines) {
       if (share((w) => /^(?:x|q|zh)/.test(w) || /iang|iong|uang/.test(w)) < 0.03 && !/z/.test(tones) && dict < 0.3) continue;
     }
     if (dict < 0.1 && !(dict >= 0.05 && mark >= 0.25)) continue;
-    // every line with words that isn't English counts as romanized (lines with a loanword or a spelling the syllable test misses too)
-    if (!best || score > best.score) best = { lang, score, lines: info.filter((x) => !isEng(x)).map((x) => x.l) };
+    // every line with words that isn't English counts as romanized (lines with a loanword or a spelling the syllable test misses too),
+    // and so does a MIXED line (romanized words + an English phrase, 1.3.6): a word of the language's list that isn't
+    // English, or two romanized-looking words that aren't English, one of them 5+ letters. Only true English lines are left.
+    const mixed = ({ words }) => {
+      const r = words.filter((w) => !ROMAN_FOREIGN.has(w) && !w.includes('\'') && L.re.test(w));
+      return r.some((w) => L.words.has(w)) || (r.length >= 2 && r.some((w) => w.length >= 5));
+    };
+    if (!best || score > best.score) best = { lang, score, lines: info.filter((x) => !isEng(x) || mixed(x)).map((x) => x.l) };
   }
   return best && best.score >= 0.15 ? { lang: best.lang, lines: [...new Set(best.lines)] } : none;
 }
@@ -170,21 +176,38 @@ function wordToKana(w) {
   return out;
 }
 const KANA_AMBIG = new Set(['made', 'are']); // English words that are also frequent romaji (まで, あれ): converted
+// Mixed lines (romaji + an English phrase, 1.3.6): short romaji-looking words (up to 3 letters, e.g. "me", "go", "we")
+// next to English words stay English unless they are Japanese particles/words between kana; a common English/Spanish
+// word that is a Japanese word too (e.g. "yo") becomes kana between kana words. Punctuation separates phrases.
 function toHiragana(line) {
   const parts = line.split(/([^\p{L}\p{M}'\u2019]+)/u);
-  const out = parts.map((p, i) => {
-    if (i % 2) return p;
+  const ja = ROMAN.ja.words;
+  const words = parts.map((p, i) => {
+    if (i % 2) return null;
     const w = p.normalize('NFD').toLowerCase().replace(/o[\u0304\u0302]/g, 'ou').replace(/([aeiu])[\u0304\u0302]/g, '$1$1').replace(/\p{M}/gu, '').replace(/\u2019/g, '\'');
-    if (!w) return p;
-    if (w === 'wa') return { k: 'は' };
-    const k = !(ROMAN_FOREIGN.has(w) && !KANA_AMBIG.has(w)) && RE_JA.test(w.replace(/'/g, '')) ? wordToKana(w) : null;
-    return k ? { k } : p;
+    if (!w) return null;
+    const conv = w === 'wa' ? 'は' : RE_JA.test(w.replace(/'/g, '')) ? wordToKana(w) : null;
+    const foreign = ROMAN_FOREIGN.has(w) && !KANA_AMBIG.has(w);
+    return { w, conv, foreign, kana: !!conv && !foreign };
   });
+  // neighbours of word i in the same phrase (only spaces between them)
+  const near = (i) => [i - 2, i + 2].filter((j) => words[j] && /^\s+$/.test(parts[(i + j) / 2]));
+  for (let changed = true; changed;) {
+    changed = false;
+    words.forEach((x, i) => {
+      if (!x || !x.conv) return;
+      const n = near(i), eng = n.filter((j) => !words[j].kana).length, kana = n.length - eng;
+      let k = x.kana;
+      if (x.kana && x.w.length <= 3 && x.w !== 'wa' && eng && (!kana || !ja.has(x.w))) k = false;       // "let me go"
+      else if (!x.kana && x.foreign && ja.has(x.w) && n.length && !eng) k = true;                        // "... iranai yo"
+      if (k !== x.kana) { x.kana = k; changed = true; }
+    });
+  }
   // kana words are joined without spaces; spaces stay around words that were left in Latin letters
   let s = '';
-  out.forEach((p, i) => {
-    if (typeof p === 'object') { s += p.k; return; }
-    if (i % 2 && /^\s+$/.test(p) && typeof out[i - 1] === 'object' && typeof out[i + 1] === 'object') return;
+  parts.forEach((p, i) => {
+    if (!(i % 2)) { s += words[i] && words[i].kana ? words[i].conv : p; return; }
+    if (/^\s+$/.test(p) && words[i - 1] && words[i - 1].kana && words[i + 1] && words[i + 1].kana) return;
     s += p;
   });
   return s.trim();
@@ -224,9 +247,9 @@ chrome.runtime.onInstalled.addListener(async () => {
 // hiragana guess with sl=ja (Japanese; Google translates that), and as the romanization with the language named for
 // Korean/Chinese (usually still unchanged: those songs get their translation from Gemini). An answer that is still
 // (nearly) the input is dropped (romTranslated), and the line shows its romanization as the main line.
-// ROMAN_VER 3: song entries of romanized songs made before (1.3.5, or 1.3.6 test builds that stored the echoed romaji as
-// "no translation") are dropped and translated again.
-const ROMAN_VER = 3;
+// ROMAN_VER 4: song entries of romanized songs made before (1.3.5, or 1.3.6 test builds that stored the echoed romaji as
+// "no translation", or took mixed romaji + English lines for English) are dropped and translated again.
+const ROMAN_VER = 4;
 const ROMAN_SL = { ja: 'ja', ko: 'ko', zh: 'zh-CN' };
 const plainWords = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().split(/[^\p{L}\p{N}']+/u).filter(Boolean);
 function romTranslated(t, line, src, tl) {

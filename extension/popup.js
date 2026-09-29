@@ -89,12 +89,13 @@ function noteKind(s) {
 
 // "This song": detected language(s) + how its lines are translated, from the cache entry the background keeps.
 const langName = (code) => { try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code.replace(/^iw/, 'he').split('-')[0]); } catch (e) { return code; } };
-async function describe({ key, lines, pending, failed }) {
+const sameLang = (a, b) => { [a, b] = [a, b].map((x) => x.toLowerCase().replace(/^iw\b/, 'he')); return a === b || (a.split('-')[0] === b.split('-')[0] && a.split('-')[0] !== 'zh'); };
+async function describe({ key, lines, pending, failed, roman }) {
   const { ['song:' + key]: entry = { lines: {} }, geminiKey, idx = {} } = await chrome.storage.local.get(['song:' + key, 'geminiKey', 'idx']);
   const tl = $('tl').value;
   const gemOn = !!geminiKey && $('translator').value === 'gemini' && !(entry.noGemini && entry.noGemini[tl]);
   const langs = {}, used = new Set();
-  let served = 0, translated = 0;
+  let served = 0, translated = 0, untranslated = 0; // untranslated: lines in another language without a translation
   for (const l of lines) {
     const c = entry.lines[l] || {};
     const fromGem = gemOn && c.g && tl in c.g;
@@ -103,12 +104,15 @@ async function describe({ key, lines, pending, failed }) {
     if (lang) langs[langName(lang)] = (langs[langName(lang)] || 0) + 1;
     if (t !== undefined) served++;
     if (t) { used.add(fromGem ? 'Gemini' : 'Google'); translated++; }
+    else if (t === '' && c.sl && !sameLang(c.sl, tl)) untranslated++;
   }
   const names = Object.keys(langs).sort((a, b) => langs[b] - langs[a]).slice(0, 3).join(' + ');
   const by = ['Gemini', 'Google'].filter((x) => used.has(x)).join(' + ');
   const cached = idx[key] - (entry.ts || 0) > 3000 ? ' (from cache)' : '';
   // Mostly in the target language (at most a quarter of the lines needed translating, e.g. a Japanese phrase in an English song).
   const state = pending ? 'Translating…' : failed ? 'Some lines failed, retrying' : !served ? 'Not translated yet'
+    // romanized LRCLIB lyrics (1.3.6) are never "already in" the target language: their lines just got no translation
+    : !used.size && untranslated && roman && roman.lang ? 'Romanized lyrics, no translation available'
     : !used.size ? `Already in ${langName(tl)}, no translation needed`
     : translated * 4 <= served ? `Mostly ${langName(tl)} · translated ${translated} line${translated === 1 ? '' : 's'} with ${by}${cached}`
     : `Translated with ${by}${cached}`;
