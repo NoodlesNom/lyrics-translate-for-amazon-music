@@ -37,6 +37,12 @@
 .amlt-gdot[data-state=green] { background: #3ddc84; }
 .amlt-gdot[data-state=amber] { background: #ffb300; }
 .amlt-gdot[data-state=red] { background: #ff5252; }
+.amlt-umark {
+  position: absolute; top: -3px; right: -3px; width: 12px; height: 12px; box-sizing: border-box;
+  border: 1.5px solid #0f1111; border-radius: 50%; background: #ffb300; color: #1a1200;
+  font: 700 9px/9px system-ui, sans-serif; text-align: center; pointer-events: none;
+}
+
 .amlt-panel {
   position: fixed; top: 124px; right: 20px; z-index: 2147483001;
   width: 320px; height: 560px; max-height: calc(100vh - 140px);

@@ -261,6 +261,19 @@
     floatBtn.addEventListener('click', () => (panel ? closePanel() : openPanel()));
     document.body.appendChild(floatBtn);
     gDot();
+    uMark();
+  }
+  // Unpacked copies only: a small ! on the floating button when GitHub has a newer release (same check as the popup).
+  function uMark() {
+    if (!floatBtn || dead) return;
+    let resp;
+    try { resp = chrome.runtime.sendMessage({ type: 'update' }); } catch (e) { return; }
+    resp.then((u) => {
+      if (!floatBtn) return;
+      let mark = floatBtn.querySelector('.amlt-umark');
+      if (!u || !u.newer) { if (mark) mark.remove(); return; }
+      if (!mark) { mark = document.createElement('span'); mark.className = 'amlt-umark'; mark.textContent = '!'; floatBtn.append(mark); }
+    }, () => {});
   }
   // Gemini status dot in the button's corner (v1.3.6): same colors and meaning as the popup's indicator (the background
   // works it out), only while Gemini is the selected translator; the tooltip names the state. Refreshed on status changes.
@@ -1110,6 +1123,7 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (dead) return;
     if (area === 'local' ? changes.geminiStatus || changes.geminiKey : area === 'sync' && changes.translator) gDot();
+    if (area === 'local' && changes.upd) uMark();
     if (area !== 'sync') return;
     const prev = settings.tl + '|' + settings.translator;
     for (const k of Object.keys(settings)) if (changes[k]) settings[k] = changes[k].newValue;
