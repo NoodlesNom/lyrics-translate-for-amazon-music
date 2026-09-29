@@ -158,8 +158,17 @@ $('updBtn').addEventListener('click', async () => {
   if (u) showUpdate(u, 'click'); else $('updMsg').textContent = "Couldn't check right now. Try again.";
 });
 
+// After the extension is reloaded or updated, a floating panel still open in an Amazon tab is left over from the old copy:
+// its chrome.* calls throw "Extension context invalidated". It then stops its timers quietly instead of filling the
+// Errors list (refreshing the Amazon tab brings back a working panel).
+const alive = () => { try { return !!chrome.runtime.id; } catch (e) { return false; } };
+const intervals = [];
+const every = (fn, ms) => intervals.push(setInterval(() => {
+  if (!alive()) { intervals.forEach(clearInterval); clearTimeout(timer); return; }
+  Promise.resolve().then(fn).catch(() => {});
+}, ms));
 let timer = 0;
-const refresh = () => { clearTimeout(timer); timer = setTimeout(render, 100); };
+const refresh = () => { clearTimeout(timer); timer = setTimeout(() => { if (alive()) render().catch(() => {}); }, 100); };
 
 // Default translator: Gemini when a key is saved, else Google.
 const showTranslator = async (value) => {
@@ -182,8 +191,8 @@ const showTranslator = async (value) => {
     refresh();
     findSong();
   });
-  setInterval(render, 30000); // keeps "last reply … ago" current
-  setInterval(findSong, 1000); // follows song changes and in-flight requests in the Amazon tab
+  every(render, 30000); // keeps "last reply … ago" current
+  every(findSong, 1000); // follows song changes and in-flight requests in the Amazon tab
 })();
 $('tl').addEventListener('change', (e) => { chrome.storage.sync.set({ tl: e.target.value }); refresh(); });
 $('translator').addEventListener('change', (e) => { chrome.storage.sync.set({ translator: e.target.value }); refresh(); });
