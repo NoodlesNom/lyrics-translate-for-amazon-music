@@ -52,7 +52,7 @@
       <div class="card"><div class="icon">Aa</div><h3>Romanization</h3>
         <p>Non-Latin lines get a romanization in small text: romaji for Japanese, pinyin for Chinese, Revised Romanization for Korean, plus Cyrillic, Arabic, Hebrew, Devanagari, Thai, Greek and more. Latin-script lines never get one.</p></div>
       <div class="card"><div class="icon">⤒</div><h3>Translation as the main line</h3>
-        <p>By default the translation replaces the original as the big, bold line, with the romanization underneath. Turn on <b>Original lyrics</b> ("Show original lyrics" in the popup) to keep the original big and show the extras in small text.</p></div>
+        <p>By default the translation replaces the original as the big, bold line, with the romanization underneath. Turn on <b>Original lyrics</b> in the popup to keep the original big and show the extras in small text.</p></div>
       <div class="card"><div class="icon">◉</div><h3>Floating button</h3>
         <p>A small round button in the top-right corner of the player opens the popup as a panel right on the page. Click outside it or press <kbd>Esc</kbd> to close it, or hide the button in the popup.</p></div>
       <div class="card"><div class="icon">⟳</div><h3>Per-song cache</h3>
@@ -114,7 +114,7 @@
     <h2>The popup</h2>
     <p class="sub">Click the toolbar icon (or the floating button). Changes apply immediately to the open lyrics.</p>
     <div class="popup-wrap">
-      <div class="popup-img"><img src="img/popup.png" width="608" height="1124" alt="The extension popup: target language, translator, Gemini status, this song's title, artist and status, a note that the lyrics were added from LRCLIB, the Translate this song button, text size, toggles including Find lyrics when Amazon has none, and the saved-songs counter."></div>
+      <div class="popup-img"><img src="img/popup.png" width="644" height="786" alt="The extension popup: target language, translator, Gemini status, this song's title, artist and status, a note that the lyrics were added from LRCLIB, the Translate this song button, text size, toggles including Find lyrics when Amazon has none, and the saved-songs counter."></div>
       <dl class="controls">
         <dt>Translate to</dt><dd>Target language: 23 languages, including English, Spanish, French, German, Japanese, Korean, Chinese (Simplified and Traditional), Arabic, Hindi and more.</dd>
         <dt>Translator</dt><dd><b>Gemini (needs key)</b> or <b>Google Translate</b>. Gemini is picked automatically once you save a key.</dd>
@@ -122,10 +122,10 @@
         <dt>This song</dt><dd>The current song's title and artist, its detected language(s) and state, for example "Japanese + English · Translated with Gemini (from cache)", "English · Already in English, no translation needed" or "Translating…". For songs Amazon has no lyrics for, a second line says where the lyrics came from: "Lyrics added from LRCLIB (synced)", or "Amazon has no lyrics; none found on LRCLIB".</dd>
         <dt>Translate this song</dt><dd>Translates the open song again with the selected translator and stops it being skipped.</dd>
         <dt>Text size</dt><dd>Small (85%), Default, Large (120%) or Extra large (145%).</dd>
-        <dt>Toggles</dt><dd>Show romanization, Show translation, Show original lyrics, Show floating button, and <b>Find lyrics when Amazon has none</b> (on by default; turn it off and nothing is ever sent to LRCLIB).</dd>
+        <dt>Toggles</dt><dd>Under <b>Show</b>: Romanization, Translation, Original lyrics and Floating button. Below them, <b>Find lyrics when Amazon has none</b> (on by default; turn it off and nothing is ever sent to LRCLIB).</dd>
         <dt>Saved songs</dt><dd>For example "Saved songs: 12 (Gemini 8 · Google 6) · ~0.3 MB": how many songs are cached, how many are fully translated by each translator, and roughly how much storage is used.</dd>
-        <dt>Check for updates</dt><dd>Unpacked copies only: asks GitHub for the latest version and shows "You're up to date (v1.3.5)" or "Update available: vX.Y.Z · Download" with a one-line how-to. They also check on their own about once a day and put a small NEW badge on the icon when an update is out. Store copies don't show it; Edge updates them.</dd>
-        <dt>Settings</dt><dd>Opens the settings page, where you save, test or remove your Gemini key.</dd>
+        <dt>Check for updates</dt><dd>Unpacked copies only: a small link at the bottom of the popup that asks GitHub for the latest version and shows "You're up to date (v1.3.5)" or "Update available: vX.Y.Z · Download" with a one-line how-to. They also check on their own about once a day and put a small NEW badge on the icon when an update is out. Store copies don't show it; Edge updates them.</dd>
+        <dt>Settings</dt><dd>The link at the top of the popup. Opens the settings page, where you save, test or remove your Gemini key.</dd>
       </dl>
     </div>
   </div>
@@ -172,7 +172,7 @@
           <li>Click <b>Load unpacked</b> and pick the folder that contains <code>manifest.json</code>.</li>
           <li>Open <a href="https://music.amazon.com">music.amazon.com</a>, play a song and open the lyrics view.</li>
         </ol>
-        <p class="upd-note"><b>Unpacked copies tell you when a new version is out</b> (a small NEW badge and a download link in the popup) <b>and have a Check for updates button.</b> To update, unzip the new ZIP over your folder and press <b>Reload</b> on the extension card.</p></div>
+        <p class="upd-note"><b>Unpacked copies tell you when a new version is out</b> (a small NEW badge and a download link in the popup) <b>and have a Check for updates link at the bottom of the popup.</b> To update, unzip the new ZIP over your folder and press <b>Reload</b> on the extension card.</p></div>
     </div>
     <p class="note" style="margin-top:18px">Works on music.amazon.com (not regional domains such as .co.jp or .de). The Google Translate web endpoint is unofficial and rate-limited; if it refuses requests, lines stay as they are and the extension retries about a minute later.</p>
   </div>
