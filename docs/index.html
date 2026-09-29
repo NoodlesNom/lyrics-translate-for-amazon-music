@@ -99,12 +99,13 @@
     <h2>What's new</h2>
     <p class="sub">Recent versions, newest first. Full history and downloads in the <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases">releases</a>.</p>
     <div class="changelog">
+      <div class="card"><h3>1.3.6</h3><p>Romanized LRCLIB lyrics now show as the romanization line; a Japanese-script copy is preferred when LRCLIB has one. Korean and Chinese romanizations are recognized too; with Gemini, the Original lyrics line shows a marked guess of the original script. Tidier popup checkboxes, and the floating button shows the Gemini status dot.</p></div>
       <div class="card"><h3>1.3.5</h3><p>Fixed: after jumping ahead in a song, the highlighted line could scroll off screen (worse with big text). It now comes straight back to the middle of the lyrics. Popup fits without scroll bars again.</p></div>
-      <div class="card"><h3>1.3.4</h3><p>Copies installed with Load unpacked now tell you when a new version is out (a NEW badge and a download link in the popup) and get a <b>Check for updates</b> button. Store copies update automatically, as before.</p></div>
-      <div class="card"><h3>1.3.3</h3><p>Smarter language check: songs already in your language never go to Gemini, even with look-alike characters, and mostly English songs only get their few foreign lines translated.</p></div>
-      <div class="card"><h3>1.3.2</h3><p>Lyrics from LRCLIB now appear in Amazon's full view, in the same spot and style as Amazon's own lyrics, with the current line highlighted.</p></div>
-      <div class="card"><h3>1.3.1</h3><p>More reliable detection of songs Amazon has no lyrics for, using the player bar's "Lyrics available" badge.</p></div>
-      <div class="card"><h3>1.3.0</h3><p>New: synced lyrics from LRCLIB for songs Amazon has no lyrics for, translated and romanized, following playback, seeks and pauses. Popup toggle <b>Find lyrics when Amazon has none</b> (on by default).</p></div>
+      <div class="card"><h3>1.3.4</h3><p>First public release with LRCLIB lyrics and the smarter language check (1.3.0–1.3.3 were test builds, released together here). Copies installed with Load unpacked now tell you when a new version is out (a NEW badge and a download link in the popup) and get a <b>Check for updates</b> button. Store copies update automatically, as before.</p></div>
+      <div class="card"><h3>1.3.3</h3><p><i>Test build, released in 1.3.4.</i> Smarter language check: songs already in your language never go to Gemini, even with look-alike characters, and mostly English songs only get their few foreign lines translated.</p></div>
+      <div class="card"><h3>1.3.2</h3><p><i>Test build, released in 1.3.4.</i> Lyrics from LRCLIB now appear in Amazon's full view, in the same spot and style as Amazon's own lyrics, with the current line highlighted.</p></div>
+      <div class="card"><h3>1.3.1</h3><p><i>Test build, released in 1.3.4.</i> More reliable detection of songs Amazon has no lyrics for, using the player bar's "Lyrics available" badge.</p></div>
+      <div class="card"><h3>1.3.0</h3><p><i>Test build, released in 1.3.4.</i> New: synced lyrics from LRCLIB for songs Amazon has no lyrics for, translated and romanized, following playback, seeks and pauses. Popup toggle <b>Find lyrics when Amazon has none</b> (on by default).</p></div>
     </div>
   </div>
 </section>
@@ -124,7 +125,7 @@
         <dt>Text size</dt><dd>Small (85%), Default, Large (120%) or Extra large (145%).</dd>
         <dt>Toggles</dt><dd>Under <b>Show</b>: Romanization, Translation, Original lyrics and Floating button. Below them, <b>Find lyrics when Amazon has none</b> (on by default; turn it off and nothing is ever sent to LRCLIB).</dd>
         <dt>Saved songs</dt><dd>For example "Saved songs: 12 (Gemini 8 · Google 6) · ~0.3 MB": how many songs are cached, how many are fully translated by each translator, and roughly how much storage is used.</dd>
-        <dt>Check for updates</dt><dd>Unpacked copies only: a small link at the bottom of the popup that asks GitHub for the latest version and shows "You're up to date (v1.3.5)" or "Update available: vX.Y.Z · Download" with a one-line how-to. They also check on their own about once a day and put a small NEW badge on the icon when an update is out. Store copies don't show it; Edge updates them.</dd>
+        <dt>Check for updates</dt><dd>Unpacked copies only: a small link at the bottom of the popup that asks GitHub for the latest version and shows "You're up to date (vX.Y.Z)" or "Update available: vX.Y.Z · Download" with a one-line how-to. They also check on their own about once a day and put a small NEW badge on the icon when an update is out. Store copies don't show it; Edge updates them.</dd>
         <dt>Settings</dt><dd>The link at the top of the popup. Opens the settings page, where you save, test or remove your Gemini key.</dd>
       </dl>
     </div>

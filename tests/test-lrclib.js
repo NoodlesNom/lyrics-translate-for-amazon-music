@@ -99,7 +99,7 @@ const near = (a, b, tol = 12) => Math.abs(a - b) <= tol;
 
 (async () => {
   const manifest = JSON.parse(fs.readFileSync(EXT + '/manifest.json', 'utf8'));
-  check('manifest 1.3.5: no new permissions (storage + the same four hosts)', manifest.version === '1.3.5' && JSON.stringify(manifest.permissions) === '["storage"]'
+  check('manifest 1.3.6: no new permissions (storage + the same four hosts)', manifest.version === '1.3.6' && JSON.stringify(manifest.permissions) === '["storage"]'
     && JSON.stringify(manifest.host_permissions) === JSON.stringify(['https://clients5.google.com/*', 'https://translate.googleapis.com/*', 'https://generativelanguage.googleapis.com/*', 'https://lrclib.net/*']));
   const src = fs.readFileSync(EXT + '/content.js', 'utf8') + fs.readFileSync(EXT + '/content.css', 'utf8');
   check('old side panel code/CSS removed (no .amlt-lrc, no minimize/hide buttons)', !/amlt-lrc|amlt-lrc-min|data-act|lrcHidden|lrcMin/.test(src));

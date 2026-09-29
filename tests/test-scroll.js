@@ -60,12 +60,14 @@ const seekAndTime = (page, i, timeout = 3000) => page.evaluate(({ i, timeout, SC
   })();
 }), { i, timeout, SC, ROWS });
 // Scroll activity since t (performance.now() in the page): scroll events grouped into bursts (gaps < 60 ms); a burst that
-// starts within 50 ms after one of Amazon's own writes is Amazon's, every other burst is the extension's.
+// starts within 80 ms after one of Amazon's own writes is Amazon's, every other burst is the extension's. (1.3.6: was 50 ms;
+// Amazon's own smooth scroll fires its first scroll event ~40-45 ms after the write in headless Chromium with 1.3.5 and 1.3.6
+// alike, so 50 ms flaked under load. The extension never scrolls sooner than KEEP_DELAY = 100 ms after a change.)
 const activity = (page, since) => page.evaluate((since) => {
   const log = amz.log.filter((e) => e.t >= since), writes = amz.writes.filter((w) => w.t >= since - 60);
   const bursts = [];
   for (const e of log) { const b = bursts[bursts.length - 1]; if (b && e.t - b.end < 60) { b.end = e.t; b.n++; b.last = e.top; } else bursts.push({ start: e.t, end: e.t, n: 1, last: e.top }); }
-  const byAmazon = (b) => writes.some((w) => b.start - w.t >= 0 && b.start - w.t <= 50);
+  const byAmazon = (b) => writes.some((w) => b.start - w.t >= 0 && b.start - w.t <= 80);
   return { events: log.length, amazonWrites: writes.filter((w) => w.t >= since).length, amazonBursts: bursts.filter(byAmazon).length, extBursts: bursts.filter((b) => !byAmazon(b)).length };
 }, since);
 const now = (page) => page.evaluate(() => performance.now());
@@ -73,7 +75,7 @@ const lastJump = (page) => page.evaluate(() => { const w = amz.writes.filter((x)
 
 (async () => {
   const manifest = JSON.parse(fs.readFileSync(EXT + '/manifest.json', 'utf8'));
-  check('manifest 1.3.5: no new permissions (storage + the same four hosts)', manifest.version === '1.3.5' && JSON.stringify(manifest.permissions) === '["storage"]'
+  check('manifest 1.3.6: no new permissions (storage + the same four hosts)', manifest.version === '1.3.6' && JSON.stringify(manifest.permissions) === '["storage"]'
     && JSON.stringify(manifest.host_permissions) === JSON.stringify(['https://clients5.google.com/*', 'https://translate.googleapis.com/*', 'https://generativelanguage.googleapis.com/*', 'https://lrclib.net/*']));
   const ctx = await chromium.launchPersistentContext('', { channel: 'chromium', headless: true, viewport: { width: 1600, height: 820 },
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`] });

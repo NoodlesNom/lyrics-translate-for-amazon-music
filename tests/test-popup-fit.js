@@ -21,7 +21,7 @@ const LONG = {
   glabel: 'Gemini working · last reply 23 h ago',
   song: ['Tu Sei L\u2019Unica Donna Per Me (Live at the Royal Albert Hall, London \u2013 2019 Remastered Deluxe Edition) by Mock Singer, Another Very Long Artist Name & The Symphony Orchestra of Somewhere Far Away',
     'English + Japanese · Mostly English · translated 12 lines with Gemini + Google (from cache)'],
-  lrcNote: 'Lyrics added from LRCLIB (synced) · open the full view to see them',
+  lrcNote: 'LRCLIB lyrics were already romanized (Japanese) · original script guessed by Gemini · not synced', // v1.3.6: the longest LRCLIB note
   forceMsg: "Couldn't reach the page. Reload it and try again.",
   counter: 'Saved songs: 1234 (Gemini 1200 · Google 1234) · ~12.3 MB',
   updMsg: 'Checked just now · GitHub is limiting requests right now. Try again later.',
@@ -125,6 +125,16 @@ async function popupChecks(ctx, sw, extId, label, withUpdate) {
   check('any element that may scroll has a thin, themed scroll bar (scrollbar-width: thin + scrollbar-color)', styled.length > 0 && styled.every((s) => s.w === 'thin' && s.c !== 'auto'), JSON.stringify(styled));
   const ox = await pop.evaluate(() => [getComputedStyle(document.documentElement).overflowX, getComputedStyle(document.body).overflowX]);
   check('horizontal scrolling is switched off (overflow-x: hidden)', ox.includes('hidden'), JSON.stringify(ox));
+  // v1.3.6: "Find lyrics when Amazon has none" has its checkbox on the LEFT of its text, like the four Show toggles.
+  const boxes = await pop.evaluate(() => ['rom', 'trans', 'orig', 'float', 'lrclib'].map((id) => {
+    const i = document.getElementById(id), l = i.closest('label'), r = i.getBoundingClientRect(), range = document.createRange();
+    const txt = [...l.childNodes].find((n) => n.nodeType === 3 && n.nodeValue.trim()); range.selectNodeContents(txt); const t = range.getBoundingClientRect();
+    return { id, cls: l.className, x: Math.round(r.left), w: Math.round(r.width), h: Math.round(r.height), gap: Math.round(t.left - r.right), mid: Math.round((r.top + r.bottom) / 2 - (t.top + t.bottom) / 2),
+      font: getComputedStyle(l).font, first: l.firstElementChild === i };
+  }));
+  const [rom, , orig, , lrc] = boxes;
+  check('(1.3.6) every checkbox sits left of its text with the same style: "Find lyrics when Amazon has none" aligned with Romanization/Original lyrics (same x, size, gap, font, vertically centered)',
+    boxes.every((b) => b.cls === 'chk' && b.first && b.gap === rom.gap && b.w === rom.w && b.h === rom.h && Math.abs(b.mid) <= 1 && b.font === rom.font) && lrc.x === rom.x && orig.x === rom.x, JSON.stringify(boxes));
   await pop.close();
 
   // ---------- In-page panel (floating button on music.amazon.com), same unpacked + update state ----------

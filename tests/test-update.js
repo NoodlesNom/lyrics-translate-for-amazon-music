@@ -11,7 +11,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
 const check = (name, cond, info = '') => { results.push([cond ? 'PASS' : 'FAIL', name, info]); console.log(cond ? 'PASS' : 'FAIL', name, info); };
 const REL = 'https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases';
-const VER = JSON.parse(fs.readFileSync(EXT + '/manifest.json', 'utf8')).version; // the installed version (1.3.5)
+const VER = JSON.parse(fs.readFileSync(EXT + '/manifest.json', 'utf8')).version; // the installed version (1.3.6)
 const VRE = VER.replace(/\./g, '\\.');
 
 let mode = 'newer', delay = 0, gh = [];
@@ -50,7 +50,7 @@ const waitGh = async (n, t = 10000) => { const t0 = Date.now(); while (gh.length
 
 (async () => {
   const manifest = JSON.parse(fs.readFileSync(EXT + '/manifest.json', 'utf8'));
-  check('manifest 1.3.5: still only "storage" + the same four hosts (no management, alarms or GitHub host permission)', manifest.version === '1.3.5'
+  check('manifest 1.3.6: still only "storage" + the same four hosts (no management, alarms or GitHub host permission)', manifest.version === '1.3.6'
     && JSON.stringify(manifest.permissions) === '["storage"]'
     && JSON.stringify(manifest.host_permissions) === JSON.stringify(['https://clients5.google.com/*', 'https://translate.googleapis.com/*', 'https://generativelanguage.googleapis.com/*', 'https://lrclib.net/*']), JSON.stringify([manifest.permissions, manifest.host_permissions]));
 

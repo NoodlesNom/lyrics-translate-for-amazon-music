@@ -48,13 +48,155 @@ const sameLang = (a, b) => {
   a = norm(a); b = norm(b);
   return a === b || (a.split('-')[0] === b.split('-')[0] && a.split('-')[0] !== 'zh');
 };
+// ---------- Romanized lyrics (v1.3.6): LRCLIB sometimes has only a romanization (Latin letters) of a Japanese, Korean or
+// Chinese song. detectRoman(lines) → { lang: 'ja' | 'ko' | 'zh' | '', lines: [the romanized lines] }.
+// Per word: does it split fully into syllables of Hepburn/kunrei romaji, Revised Romanization, or pinyin? Per line: a
+// line is a candidate when at least 2/3 of its words split and under 30% are common English/Romance words. Per song: at
+// least half the lines (and 3) must be candidates, AND the candidate lines need language-specific evidence: frequent
+// function/common words of that language that are not English words (wa/ga/wo/kimi/kokoro… · naega/neoui/saranghae… ·
+// wo/ni/de/xiang/zhe…) plus structural marks (tsu/shi/kya, long vowels/macrons, no word ending in a consonant other than n ·
+// eo/eu/ae digraphs, words ending in ng/l/k · x/q/zh initials, iang/iong, tone marks). English songs fail the English-word
+// share and lack those words, so they aren't flagged even when many of their words happen to split into syllables.
+const ROMAN_IGNORE = new Set('oh ooh ohh ah ahh aah yeah yeh ya hey eh uh huh hmm mm mmm ha haha la lalala whoa woah wow ay ayy yo woo ooo'.split(' '));
+const ROMAN_FOREIGN = new Set(('the and you your yours you\'re i i\'m im i\'ve ive i\'ll ill i\'d my mine me\'s it it\'s its is are was were be been am ' +
+  'of in on at for with from by up down out over into onto this that these those there their they them then than what when where who why how ' +
+  'all just can can\'t cant don\'t dont won\'t wont will would could should not never ever every love loving lover heart night day days time ' +
+  'baby know like want need feel see look come came gone going get got give take make made let say said tell think thought keep hold ' +
+  'if but or because cause so\'s our ours us we\'re she he\'s his her him one only still again away back here now more some something ' +
+  'nothing anything everything world life eyes hands home light dark fire rain sky sun moon dream dreams alone together forever tonight ' +
+  'way right left long little much many over under around through without with within have has had do does did doing been being ' +
+  'que el los las y en por para con sin mi tu yo su lo del al una uno pero como cuando donde amor vida corazón corazon quiero siempre nunca ' +
+  'il di che non per sono ti amo io mio mia tuo cuore sempre ancora questa questo le les et est pas moi toi un une des du je suis avec dans ' +
+  'você nao não meu minha eu com para um uma é és está ich du und nicht der die das ist mein dein').split(' '));
+const RE_JA = /^(?:(?:ky|gy|sh|sy|ch|cy|ty|jy|zy|dy|ny|hy|by|py|my|ry|ts|[kgsztdnhbpmrfvj])?[aiueo]|y[auo]|w[aoie]|n(?![aiueoy])|([kgsztdhbpmfcj])(?=\1)|t(?=ch))+$/;
+const RE_KO = /^(?:(?:kk|tt|pp|ss|jj|ch|sh|[gkndtrlmbpsjh])?(?:yae|yeo|wae|ae|ya|eo|ye|wa|oe|yo|wo|we|wi|yu|eu|ui|a|e|o|u|i)(?:ng|ll|[kntlmpgbd](?![aeiouwy]))?)+$/;
+const RE_ZH = /^(?:[jqx](?:iang|iong|ian|iao|ing|ia|ie|iu|in|i|uan|un|ue|u)|(?:zh|ch|sh|[bpmfdtnlgkhrzcsyw])?(?:iang|iong|uang|ang|eng|ing|ong|ian|iao|uai|uan|ai|ei|ao|ou|an|en|in|un|ia|ie|iu|ua|uo|ui|ue|er|a|o|e|i|u|v))+$/;
+const ROMAN = {
+  ja: { re: RE_JA, words: new Set(('wa ga wo ni mo ne yo ka tte kimi boku ore watashi atashi anata omae kokoro sekai yume sora ai koi namida ' +
+    'hikari kaze hoshi tsuki yoru asa ashita kyou kinou itsumo zutto mada mou motto kitto dake nai naka hitori futari issho mune koe hana ' +
+    'ame toki kono sono ano nani doko itsu dare suki daisuki sayonara arigatou desu masu deshita shite iru aru naru kara demo dakara sore ' +
+    'kore soshite mitai yori nara tabi michi basho omoi omoide egao kotoba mirai ima mata sugu tsuyoku yasashii kanashii sabishii aitai ' +
+    'dakishimete kanojo kare zo ze shinai shiranai wakaranai kimochi mieru kikoeru mitsumete wasurenai hajimete owari nanda nandemo ' +
+    'dokomade tomo naze nante koto mono hito sagashite yukkuri mamoru shinjite tsutaetai negai inori kagayaku kienai tte shi wo ga ne').split(' ')),
+    mark: /tsu|shi|chi|[kgnhbpmr]y[auo]|([kstp])\1|ou$|uu|ii|oo|aa/ },
+  ko: { re: RE_KO, words: new Set(('naega nega neoui naui neo nae uri urin saranghae saranghae saranghaeyo sarang haru geudae maeum oneul nuneul ' +
+    'jeongmal gachi hamkke eopseo eobseo isseo dasi modeun ije geu hana nal mal bogo sipeo sipda neomu jom chaja achim bam haneul byeol ' +
+    'kkum nunmul gieok yeogi jigeum eonjena hangsang cheoeum majimak nareul neoreul nado neodo neon nan geureon ireon eotteoke wae ' +
+    'nuga mwo mwoya eodi eonje hajiman geurigo geuraeseo jebal gwaenchana annyeong haengbok apa apeun gidaryeo tteonaji tteona ' +
+    'saranghandago bogoshipda bogosipeo gomawo mianhae naegen neoege nae ne').split(' ')),
+    mark: /eo|eu|ae|ui|[^n]g$|ng$|[lkpm]$/ },
+  zh: { re: RE_ZH, words: new Set(('wo ni ta de shi bu le zai ai xiang women nimen tamen zhe zhege nage shenme weishenme meiyou yige ' +
+    'xin tian kan ting shuo zhidao xihuan aiqing yongyuan hai yao hui jiu dou ba ne zhi rang gei dui gen xia li qu lai dao guo zhong ' +
+    'ren sheng meng feng yu hua yue liang suo yi qi ru ruguo keyi kaixin shijie shiguang yiqi huiyi xingfu wenrou qingchu mingtian ' +
+    'zuotian jintian yijing haishi zhiyou buyao bushi keshi danshi yinwei suoyi dengdai sinian xiangnian zhen de xiaoshi yan lei').split(' ')),
+    mark: /^(?:x|q|zh)|iang|iong|uang|ian|iao|ong$|ui$|uo$|iu$/ },
+};
+
+function romanWords(line) {
+  const out = [];
+  let marks = '';
+  for (let w of line.normalize('NFD').toLowerCase().split(/[^\p{L}\p{M}'\u2019]+/u)) {
+    if (!w) continue;
+    if (/\u030c/.test(w) || /[aeiou][\u0301\u0300]/.test(w)) marks += 'z'; // caron or acute/grave on a vowel: pinyin tones
+    if (/[aeiou][\u0304\u0302]/.test(w)) marks += 'j';                        // macron/circumflex: Hepburn long vowels (or pinyin tone 1)
+    w = w.replace(/o\u0304|o\u0302/g, 'ou').replace(/([aeiu])[\u0304\u0302]/g, '$1$1').replace(/\p{M}/gu, '').replace(/['\u2019]/g, (m, i, s) => (i > 0 && i < s.length - 1 ? '\'' : ''));
+    if (!/^\p{L}[\p{L}']*$/u.test(w) || ROMAN_IGNORE.has(w)) continue;
+    out.push(w);
+  }
+  return { words: out, marks };
+}
+
+function detectRoman(lines) {
+  const none = { lang: '', lines: [] };
+  const info = lines.filter((l) => l && /\p{L}/u.test(l) && !NON_LATIN.test(latinize(l))).map((l) => ({ l, ...romanWords(l) })).filter((x) => x.words.length);
+  const lettered = lines.filter((l) => l && /\p{L}/u.test(l)).length;
+  if (info.length < 3 || info.length < lettered * 0.9) return none; // lines in another script: not a romanized song
+  const isEng = ({ words }) => words.filter((w) => ROMAN_FOREIGN.has(w)).length >= words.length * 0.3;
+  const eng = info.filter(isEng).length;
+  let best = null;
+  for (const [lang, L] of Object.entries(ROMAN)) {
+    const cand = info.filter((x) => !isEng(x) && x.words.filter((w) => !w.includes('\'') && L.re.test(w)).length >= x.words.length * 2 / 3);
+    // at least half the lines that aren't English (romanized songs often have English lines), and a quarter of all lines
+    if (cand.length < 3 || cand.length < (info.length - eng) * 0.5 || cand.length < info.length * 0.25) continue;
+    const ws = cand.flatMap((x) => x.words);
+    const share = (f) => ws.filter(f).length / ws.length;
+    const dict = share((w) => L.words.has(w)), mark = share((w) => L.mark.test(w));
+    if (new Set(ws.filter((w) => L.words.has(w))).size < 3) continue; // several different words of that language, not one repeated
+    const tones = cand.map((x) => x.marks).join('');
+    let score = dict + mark * 0.5;
+    if (lang === 'ja') {
+      if (share((w) => /[^aeioun]$/.test(w)) > 0.1) continue; // Japanese words end in a vowel or n (a few loanwords aside)
+      if (/z/.test(tones)) score -= 0.2;
+      if (/j/.test(tones)) score += 0.1;
+    } else if (lang === 'ko') {
+      if (share((w) => /eo|eu/.test(w)) < 0.04 && dict < 0.15) continue; // eo/eu is the signature of Revised Romanization
+    } else if (lang === 'zh') {
+      if (/z/.test(tones)) score += 0.3;
+      if (share((w) => /^(?:x|q|zh)/.test(w) || /iang|iong|uang/.test(w)) < 0.03 && !/z/.test(tones) && dict < 0.3) continue;
+    }
+    if (dict < 0.1 && !(dict >= 0.05 && mark >= 0.25)) continue;
+    // every line with words that isn't English counts as romanized (lines with a loanword or a spelling the syllable test misses too)
+    if (!best || score > best.score) best = { lang, score, lines: info.filter((x) => !isEng(x)).map((x) => x.l) };
+  }
+  return best && best.score >= 0.15 ? { lang: best.lang, lines: [...new Set(best.lines)] } : none;
+}
+
+// Local fallback for the "Original lyrics" line of romanized JAPANESE songs without Gemini: romaji → hiragana, word by
+// word (a word that isn't romaji, or is a common English word, stays as it is). Only a guess: no kanji, and of the
+// particles only a lone "wa" → は and "wo" → を; shown only with "Original lyrics" on and marked as a guess.
+const KANA_ROWS = { '': 'あいうえお', k: 'かきくけこ', g: 'がぎぐげご', s: 'さしすせそ', z: 'ざじずぜぞ', t: 'たちつてと', d: 'だぢづでど',
+  n: 'なにぬねの', h: 'はひふへほ', b: 'ばびぶべぼ', p: 'ぱぴぷぺぽ', m: 'まみむめも', r: 'らりるれろ', f: 'ふぁ ふぃ ふ ふぇ ふぉ', v: 'ゔぁ ゔぃ ゔ ゔぇ ゔぉ' };
+const KANA = new Map();
+for (const [c, row] of Object.entries(KANA_ROWS)) {
+  const cells = row.includes(' ') ? row.split(' ') : [...row];
+  'aiueo'.split('').forEach((v, i) => KANA.set(c + v, cells[i]));
+}
+Object.entries({ ya: 'や', yu: 'ゆ', yo: 'よ', wa: 'わ', wo: 'を', wi: 'うぃ', we: 'うぇ', shi: 'し', chi: 'ち', tsu: 'つ', ji: 'じ', fu: 'ふ',
+  she: 'しぇ', che: 'ちぇ', je: 'じぇ', ti: 'ち', tu: 'つ', si: 'し', zi: 'じ', hu: 'ふ', di: 'ぢ', du: 'づ' }).forEach(([k, v]) => KANA.set(k, v));
+for (const [c, i] of Object.entries({ ky: 'き', gy: 'ぎ', ny: 'に', hy: 'ひ', by: 'び', py: 'ぴ', my: 'み', ry: 'り', sh: 'し', sy: 'し', ch: 'ち', cy: 'ち', ty: 'ち', j: 'じ', jy: 'じ', zy: 'じ', dy: 'ぢ' })) {
+  KANA.set(c + 'a', i + 'ゃ'); KANA.set(c + 'u', i + 'ゅ'); KANA.set(c + 'o', i + 'ょ');
+}
+function wordToKana(w) {
+  let out = '';
+  for (let i = 0; i < w.length;) {
+    const c = w[i], nx = w[i + 1];
+    if (c === 'n' && (nx === undefined || nx === '\'' || !/[aiueoy]/.test(nx))) { out += 'ん'; i += nx === '\'' ? 2 : 1; continue; }
+    if (nx && c === nx && /[kgsztdhbpmfcj]/.test(c)) { out += 'っ'; i++; continue; }
+    if (c === 't' && nx === 'c') { out += 'っ'; i++; continue; }
+    const hit = [3, 2, 1].map((n) => w.slice(i, i + n)).find((k) => KANA.has(k));
+    if (!hit) return null;
+    out += KANA.get(hit); i += hit.length;
+  }
+  return out;
+}
+const KANA_AMBIG = new Set(['made', 'are']); // English words that are also frequent romaji (まで, あれ): converted
+function toHiragana(line) {
+  const parts = line.split(/([^\p{L}\p{M}'\u2019]+)/u);
+  const out = parts.map((p, i) => {
+    if (i % 2) return p;
+    const w = p.normalize('NFD').toLowerCase().replace(/o[\u0304\u0302]/g, 'ou').replace(/([aeiu])[\u0304\u0302]/g, '$1$1').replace(/\p{M}/gu, '').replace(/\u2019/g, '\'');
+    if (!w) return p;
+    if (w === 'wa') return { k: 'は' };
+    const k = !(ROMAN_FOREIGN.has(w) && !KANA_AMBIG.has(w)) && RE_JA.test(w.replace(/'/g, '')) ? wordToKana(w) : null;
+    return k ? { k } : p;
+  });
+  // kana words are joined without spaces; spaces stay around words that were left in Latin letters
+  let s = '';
+  out.forEach((p, i) => {
+    if (typeof p === 'object') { s += p.k; return; }
+    if (i % 2 && /^\s+$/.test(p) && typeof out[i - 1] === 'object' && typeof out[i + 1] === 'object') return;
+    s += p;
+  });
+  return s.trim();
+}
+
 const simplify = (s) => s.toLowerCase().replace(/[\s\p{P}]+/gu, ' ').trim();
 const fetchT = (url, opts) => fetch(url, { ...opts, credentials: 'omit', signal: AbortSignal.timeout(LIMITS.timeoutMs) });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   autoCheckSoon(); // unpacked copies: the daily update check piggybacks on normal activity (no alarms permission)
   const job = msg && msg.type === 'lyrics' ? handle(msg) : msg && msg.type === 'testKey' ? testKey(msg.key)
-    : msg && msg.type === 'lrclib' ? lrclib(msg) : msg && msg.type === 'update' ? updateInfo(msg.manual) : null;
+    : msg && msg.type === 'lrclib' ? lrclib(msg) : msg && msg.type === 'update' ? updateInfo(msg.manual) : msg && msg.type === 'gstate' ? gState() : null;
   if (!job) return;
   job.then(sendResponse, (e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
   return true;
@@ -73,11 +215,21 @@ chrome.runtime.onInstalled.addListener(async () => {
 // lines = all unique lyric lines of the current song, in order.
 // force = popup button "Translate this song": clear the skip flag, never language-skip this song again, and
 // translate it afresh with the selected translator (Gemini unless paused; Google re-detects each Latin line on its own).
-async function handle({ key, lines, tl, force }) {
+// roman (v1.3.6, LRCLIB songs only) = { lang, lines }: the lyrics are a romanization (detectRoman) and these lines are
+// romanized. Those lines are translated as romaji/RR/pinyin, never language-skipped, and get an "original script" guess
+// (o): from Gemini (same request, which also names the language and overrides the guess, "none" = not romanized after
+// all), else for Japanese a local hiragana guess; Korean/Chinese get none without Gemini.
+const ROMAN_VER = 2; // song entries of romanized songs made before 1.3.6 (translated as if the romaji were the original) are dropped
+async function handle({ key, lines, tl, force, roman }) {
   const sk = 'song:' + key;
   const { [sk]: stored, geminiKey, geminiStatus } = await chrome.storage.local.get([sk, 'geminiKey', 'geminiStatus']);
   const { translator } = await chrome.storage.sync.get('translator');
-  const entry = stored || { lines: {} };
+  const rm = roman && ROMAN[roman.lang] && Array.isArray(roman.lines) ? roman : null;
+  const entry = stored && !(rm && stored.rv !== ROMAN_VER) ? stored : { lines: {} };
+  if (rm) entry.rv = ROMAN_VER;
+  const romanSet = new Set(rm ? rm.lines : []);
+  const rlang = () => (!rm ? '' : entry.roman && 'lang' in entry.roman ? entry.roman.lang : rm.lang);
+  const isRom = (l) => !!rlang() && romanSet.has(l);
   const cell = (l) => entry.lines[l] || (entry.lines[l] = { t: {} });
   if (force) { if (entry.noGemini) delete entry.noGemini[tl]; if (entry.mostly) delete entry.mostly[tl]; (entry.force ||= {})[tl] = 1; }
   let useGemini = !!geminiKey && translator !== 'google' && !(entry.noGemini && entry.noGemini[tl]);
@@ -86,7 +238,7 @@ async function handle({ key, lines, tl, force }) {
   const forGem = (l) => useGemini && !(mostly && isLatin(l));
   const gem = (l) => forGem(l) && entry.lines[l] && entry.lines[l].g && tl in entry.lines[l].g;
   const hasT = (l) => entry.lines[l] && entry.lines[l].t && tl in entry.lines[l].t;
-  let changed = !!force, geminiCode;
+  let changed = !!force || (!!rm && entry !== stored), geminiCode;
 
   // Google: romanization + translation (language detected per batch). Returns false if a request failed.
   const google = async (list, perLine) => {
@@ -100,7 +252,8 @@ async function handle({ key, lines, tl, force }) {
           c.sl = res.sl;
           c.r = isLatin(line) ? '' : res.r[i] || '';
           const t = res.t[i] || '';
-          c.t[tl] = sameLang(res.sl, tl) || simplify(t) === simplify(latinize(line)) ? '' : t;
+          c.t[tl] = (sameLang(res.sl, tl) && !isRom(line)) || simplify(t) === simplify(latinize(line)) ? '' : t;
+          if (isRom(line)) c.sl = rlang(); // Google's detection is unreliable for romanized text (best effort translation)
         });
         changed = true;
       } catch (e) {
@@ -119,7 +272,7 @@ async function handle({ key, lines, tl, force }) {
   //    - a few non-Latin lines (e.g. a Japanese phrase): only those go to the selected translator (mostly).
   //    This song's cached Gemini output for its Latin lines contradicts that and is dropped (other songs are untouched).
   //    If detection fails, Gemini is tried as usual.
-  if (useGemini && !(entry.force && entry.force[tl]) && latin.length && other.length <= lines.length * MOSTLY
+  if (useGemini && !rm && !(entry.force && entry.force[tl]) && latin.length && other.length <= lines.length * MOSTLY
       && (!(entry.chk && entry.chk[tl]) || latin.some((l) => !hasT(l)))) {
     await google(latin.filter((l) => !hasT(l)));
     if (latin.every(hasT)) {
@@ -139,10 +292,18 @@ async function handle({ key, lines, tl, force }) {
   const gemLines = lines.filter(forGem);
   if (useGemini && force && paused) geminiCode = geminiStatus.code; // popup names the reason for the pause
   if (useGemini && gemLines.length && (force || gemLines.some((l) => !gem(l))) && !paused) {
-    const res = await gemini(gemLines, tl, geminiKey);
+    const res = await gemini(gemLines, tl, geminiKey, rm && rm.lang);
     geminiCode = res.out ? 'ok' : res.code;
     if (res.out) {
       gemLines.forEach((l, i) => { const c = cell(l); (c.g ||= {})[tl] = simplify(res.out[i]) === simplify(l) ? '' : res.out[i]; });
+      if (rm) { // romanized song: Gemini's language verdict and its original-script guesses
+        entry.roman = { lang: res.lang === 'none' ? '' : ROMAN[res.lang] ? res.lang : rm.lang };
+        gemLines.forEach((l, i) => {
+          const c = cell(l), o = (res.orig && res.orig[i]) || '';
+          if (isRom(l)) Object.assign(c, { sl: rlang(), o: NON_LATIN.test(o) ? o : '', og: 'gemini' }); // '' = Gemini sees nothing to rebuild
+          else { delete c.o; delete c.og; }
+        });
+      }
     } else if (res.code === 'mismatch') {
       (entry.noGemini ||= {})[tl] = 1; // this song stays on Google
       useGemini = false;
@@ -155,21 +316,60 @@ async function handle({ key, lines, tl, force }) {
   //    Forced: every line Gemini didn't cover is translated again, ignoring cached (possibly empty) translations.
   const ok = await google(lines.filter((l) => (!gem(l) && (force || !hasT(l))) || (!isLatin(l) && !(entry.lines[l] && 'r' in entry.lines[l]))), force);
 
+  // 3. Romanized Japanese without a Gemini guess: local hiragana guess for the "Original lyrics" line.
+  if (rlang() === 'ja') {
+    for (const l of lines) {
+      const c = entry.lines[l];
+      if (!isRom(l) || !c || c.og === 'gemini') continue;
+      const o = toHiragana(l);
+      if (/[\u3040-\u309f]/.test(o) && (c.o !== o || c.og !== 'local')) { Object.assign(c, { o, og: 'local' }); changed = true; }
+    }
+  }
+
   await persist(key, entry, changed);
   const results = {};
+  let guess = '';
   for (const l of lines) {
     const c = entry.lines[l];
     const t = gem(l) ? c.g[tl] : c && c.t && tl in c.t ? c.t[tl] : undefined;
-    if (t !== undefined) results[l] = { r: c.r || '', t };
+    if (t === undefined) continue;
+    results[l] = { r: c.r || '', t };
+    if (isRom(l) && c.o && (c.og === 'gemini' || rlang() === 'ja')) {
+      Object.assign(results[l], { o: c.o, og: c.og });
+      if (c.og === 'gemini' || !guess) guess = c.og;
+    }
   }
-  return { ok, results, gemini: geminiCode };
+  return { ok, results, gemini: geminiCode, roman: rm ? { lang: rlang(), guess, by: entry.roman ? 'gemini' : 'guess' } : undefined };
 }
 
 // ---------- Gemini ----------
-async function gemini(lines, tl, apiKey) {
+// roman = 'ja' | 'ko' | 'zh' (v1.3.6): the lines look like a romanization of that language. The reply is then an object:
+// { lang: 'ja' | 'ko' | 'zh' | 'none', lines: [{ t: translation, o: the line rebuilt in the original script (a guess) }] }.
+const ROMAN_NAMES = { ja: 'Japanese (romaji)', ko: 'Korean (Revised Romanization or similar)', zh: 'Mandarin Chinese (pinyin)' };
+async function gemini(lines, tl, apiKey, roman) {
   let lang = tl;
   try { lang = `${new Intl.DisplayNames(['en'], { type: 'language' }).of(tl)} (${tl})`; } catch (e) { /* keep code */ }
-  const body = {
+  const body = roman ? {
+    systemInstruction: { parts: [{ text:
+      `You translate song lyrics into ${lang}. These lyrics are written in Latin letters and look like a romanization of ${ROMAN_NAMES[roman]}. ` +
+      'The input is a numbered list of lyric lines. Return a JSON object. "lang": the language the romanized lines are in: "ja" (Japanese), ' +
+      '"ko" (Korean), "zh" (Chinese), or "none" if they are not a romanization of one of these. ' +
+      `"lines": an array with exactly ${lines.length} objects, one per input line, in the same order, each with "t" = the translation into ${lang} ` +
+      '(natural and faithful, keeping the meaning, tone and imagery, using the context of the whole song; ' +
+      `if a line is already in ${lang}, return it unchanged) and "o" = your best reconstruction of the line in its original script ` +
+      '(kanji and kana for Japanese, Hangul for Korean, Chinese characters for Chinese), or "" if the line is not romanized. ' +
+      'Do not merge, split, add, drop or number lines.' }] },
+    contents: [{ role: 'user', parts: [{ text: lines.map((l, i) => `${i + 1}. ${l}`).join('\n') }] }],
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: 'application/json',
+      responseSchema: { type: 'OBJECT', required: ['lang', 'lines'], propertyOrdering: ['lang', 'lines'], properties: {
+        lang: { type: 'STRING', enum: ['ja', 'ko', 'zh', 'none'] },
+        lines: { type: 'ARRAY', minItems: lines.length, maxItems: lines.length, items: { type: 'OBJECT', required: ['t', 'o'], propertyOrdering: ['t', 'o'],
+          properties: { t: { type: 'STRING' }, o: { type: 'STRING' } } } },
+      } },
+    },
+  } : {
     systemInstruction: { parts: [{ text:
       `You translate song lyrics into ${lang}. Translate naturally and faithfully, keeping the meaning, tone and imagery, ` +
       'and use the context of the whole song. The input is a numbered list of lyric lines. Return a JSON array with exactly ' +
@@ -206,7 +406,12 @@ async function gemini(lines, tl, apiKey) {
   try {
     const parts = data.candidates[0].content.parts.filter((p) => !p.thought);
     const out = JSON.parse(parts.map((p) => p.text).join(''));
-    if (Array.isArray(out) && out.length === lines.length && out.every((s) => typeof s === 'string')) return { out: out.map((s) => s.trim()) };
+    if (roman) {
+      const ls = out && out.lines;
+      if (Array.isArray(ls) && ls.length === lines.length && ls.every((x) => x && typeof x.t === 'string')) {
+        return { out: ls.map((x) => x.t.trim()), orig: ls.map((x) => (typeof x.o === 'string' ? x.o.trim() : '')), lang: typeof out.lang === 'string' ? out.lang.toLowerCase() : '' };
+      }
+    } else if (Array.isArray(out) && out.length === lines.length && out.every((s) => typeof s === 'string')) return { out: out.map((s) => s.trim()) };
   } catch (e) { /* fall through */ }
   return { code: 'mismatch' };
 }
@@ -217,6 +422,20 @@ async function setStatus(res) {
   const code = res.out ? 'ok' : res.code; // ok | quota | badkey | timeout | error | mismatch
   const wait = { quota: res.retryMs, badkey: 365 * 864e5, timeout: 60000, error: 60000 }[code] || 0;
   await chrome.storage.local.set({ geminiStatus: { code, at: Date.now(), until: wait ? Date.now() + wait : 0 } });
+}
+
+// Gemini status for the floating button's dot (v1.3.6): same states and colors as the popup's indicator, shown only while
+// Gemini is the selected translator (the popup's default: Gemini when a key is saved). The key itself never leaves here.
+const GEM_ERR = { quota: 'quota hit', timeout: 'timed out', error: 'error', mismatch: 'unexpected reply' };
+async function gState() {
+  const { geminiKey, geminiStatus: st } = await chrome.storage.local.get(['geminiKey', 'geminiStatus']);
+  const { translator } = await chrome.storage.sync.get('translator');
+  if ((translator || (geminiKey ? 'gemini' : 'google')) !== 'gemini') return { show: false };
+  if (!geminiKey) return { show: true, state: 'gray', label: 'Gemini: no key saved' };
+  if (!st) return { show: true, state: 'gray', label: 'Gemini: not used yet' };
+  if (st.code === 'ok') return { show: true, state: 'green', label: 'Gemini working' };
+  if (st.code === 'badkey') return { show: true, state: 'red', label: 'Gemini error: invalid key' };
+  return { show: true, state: 'amber', label: `Gemini error: ${GEM_ERR[st.code] || 'error'} (using Google)` };
 }
 
 async function testKey(key) {
@@ -315,10 +534,12 @@ async function evict(idx, n, keep) {
 // ---------- LRCLIB: lyrics for songs Amazon has none for ----------
 // Only the song's title, artist and duration are sent (to lrclib.net, without cookies). LRCLIB asks clients to identify
 // themselves; browsers don't let extensions set User-Agent, so its documented alternative header Lrclib-Client is used.
-// Results share the song LRU: lrc:<key> = { id, dur, synced } | { id, dur, plain } (kept until evicted) | { none: 1, dur, until } (7 days).
+// Results share the song LRU: lrc:<key> = { v, id, dur, synced } | { v, id, dur, plain } (kept until evicted) | { none: 1, dur, until } (7 days).
+// v = LRC_VER (1.3.6+). A found result without it whose lyrics are romanized was chosen before 1.3.6 (which didn't look for
+// a copy in the original script): it is looked up again once, and the song's translations are dropped with it.
 const LRCLIB = 'https://lrclib.net/api';
 const LRC_CLIENT = `Lyrics Translate & Romanize for Amazon Music v${chrome.runtime.getManifest().version} (https://github.com/NoodlesNom/lyrics-translate-for-amazon-music)`;
-const LRC_NONE_MS = 7 * 864e5, LRC_MAX_DIFF = 3;
+const LRC_NONE_MS = 7 * 864e5, LRC_MAX_DIFF = 3, LRC_VER = 2;
 const lrcJobs = new Map();
 let lrcPauseUntil = 0; // after a 429: honor Retry-After
 
@@ -326,8 +547,9 @@ async function lrclib({ key, title, artist, duration }) {
   if (!key || !title || !artist || !(duration > 0)) return { status: 'error' };
   const lk = 'lrc:' + key;
   const { [lk]: hit } = await chrome.storage.local.get(lk);
+  const stale = !!hit && !hit.none && hit.v !== LRC_VER && !!detectRoman(lrcLines(hit)).lang; // romanized copy picked before 1.3.6
   // Same title/artist but another duration (e.g. a live version) is looked up again.
-  if (hit && (!hit.none || hit.until > Date.now()) && !(Math.abs((hit.dur || duration) - duration) > LRC_MAX_DIFF)) {
+  if (hit && !stale && (!hit.none || hit.until > Date.now()) && !(Math.abs((hit.dur || duration) - duration) > LRC_MAX_DIFF)) {
     await touch(key);
     return lrcView(hit);
   }
@@ -335,7 +557,8 @@ async function lrclib({ key, title, artist, duration }) {
   if (!lrcJobs.has(key)) {
     lrcJobs.set(key, lrcLookup(title, artist, duration).then(async (rec) => {
       const dur = Math.round(duration);
-      const value = rec ? (rec.syncedLyrics ? { id: rec.id, dur, synced: rec.syncedLyrics } : { id: rec.id, dur, plain: rec.plainLyrics }) : { none: 1, dur, until: Date.now() + LRC_NONE_MS };
+      const value = rec ? (rec.syncedLyrics ? { v: LRC_VER, id: rec.id, dur, synced: rec.syncedLyrics } : { v: LRC_VER, id: rec.id, dur, plain: rec.plainLyrics }) : { none: 1, dur, until: Date.now() + LRC_NONE_MS };
+      if (stale) await chrome.storage.local.remove('song:' + key); // translations of the old romanized copy
       await storeLrc(key, value);
       return lrcView(value);
     }, (e) => ({ status: 'error', retryMs: e.retryMs || 0 })).finally(() => lrcJobs.delete(key)));
@@ -343,31 +566,60 @@ async function lrclib({ key, title, artist, duration }) {
   return lrcJobs.get(key);
 }
 
+// found → also roman: 'ja' | 'ko' | 'zh' | '' and romanLines (the romanized lines) for romanized lyrics (see detectRoman).
 function lrcView(v) {
   if (v.none) return { status: 'none' };
-  if (v.synced) return { status: 'found', id: v.id, synced: parseLrc(v.synced), plain: null };
-  return { status: 'found', id: v.id, synced: null, plain: (v.plain || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean) };
+  const synced = v.synced ? parseLrc(v.synced) : null;
+  const plain = synced ? null : (v.plain || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const roman = detectRoman(synced ? synced.map(([, t]) => t) : plain);
+  return { status: 'found', id: v.id, synced, plain, roman: roman.lang, romanLines: roman.lines };
+}
+// The lyric lines of a stored value or an LRCLIB record.
+const lrcLines = (v) => {
+  const synced = v.synced || v.syncedLyrics, plain = v.plain || v.plainLyrics;
+  return synced ? parseLrc(synced).map(([, t]) => t) : (plain || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+};
+// Written in the original script of lang: at least 30% of the lines with letters hold it (Japanese: kana, or kanji with some
+// kana in the song; Korean: Hangul; Chinese: Chinese characters and no kana).
+function nativeScript(lines, lang) {
+  const ls = lines.filter((l) => /\p{L}/u.test(l));
+  const has = (re) => ls.filter((l) => re.test(l)).length;
+  const kana = has(/[\p{Script=Hiragana}\p{Script=Katakana}]/u), han = has(/\p{Script=Han}/u), hangul = has(/\p{Script=Hangul}/u);
+  const n = lang === 'ja' ? (kana ? has(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u) : 0) : lang === 'ko' ? hangul : !kana ? han : 0;
+  return ls.length > 0 && n >= ls.length * 0.3;
 }
 
 // 1. /api/get with title, artist and duration (LRCLIB's own ±2 s match), checked again here.
 // 2. If that finds nothing, or only unsynced lyrics: /api/search (title + first artist); only close matches count:
 //    same normalized title and artist, duration within 3 s. Synced beats plain, then the closest duration.
+// 3. (1.3.6) If the chosen lyrics are romanized (romaji, Korean romanization, pinyin): another close match from the search
+//    results (the same /api/search call, made now if step 2 didn't need it) that is written in the original script wins,
+//    synced before plain, then the closest duration. No other data is sent.
 async function lrcLookup(title, artist, duration) {
-  let best = null;
+  let best = null, list = null;
+  const search = () => lrcFetch('/search', { track_name: title, artist_name: artists(artist)[0] || artist });
+  const byQuality = (a, b) => (!!b.syncedLyrics - !!a.syncedLyrics) || Math.abs(a.duration - duration) - Math.abs(b.duration - duration);
   const got = await lrcFetch('/get', { track_name: title, artist_name: artist, duration: Math.round(duration) });
   if (lrcMatch(got, title, artist, duration)) best = got;
-  if (best && best.syncedLyrics) return best;
-  let list;
-  try {
-    list = await lrcFetch('/search', { track_name: title, artist_name: artists(artist)[0] || artist });
-  } catch (e) {
-    if (best) return best;
-    throw e;
+  if (!(best && best.syncedLyrics)) {
+    try {
+      list = await search();
+    } catch (e) {
+      if (best) return best;
+      throw e;
+    }
+    const cands = (Array.isArray(list) ? list : []).filter((r) => lrcMatch(r, title, artist, duration));
+    cands.sort(byQuality);
+    if (cands[0] && (cands[0].syncedLyrics || !best)) best = cands[0];
   }
-  const cands = (Array.isArray(list) ? list : []).filter((r) => lrcMatch(r, title, artist, duration));
-  cands.sort((a, b) => (!!b.syncedLyrics - !!a.syncedLyrics) || Math.abs(a.duration - duration) - Math.abs(b.duration - duration));
-  if (cands[0] && (cands[0].syncedLyrics || !best)) best = cands[0];
-  return best;
+  const roman = best ? detectRoman(lrcLines(best)).lang : '';
+  if (!roman) return best;
+  if (!list) {
+    try { list = await search(); } catch (e) { return best; }
+  }
+  const native = (Array.isArray(list) ? list : []).filter((r) => r.id !== best.id && lrcMatch(r, title, artist, duration) && nativeScript(lrcLines(r), roman));
+  native.sort(byQuality);
+  return native[0] || best;
 }
 
 async function lrcFetch(path, params) {

@@ -123,20 +123,22 @@
     if (sig !== lastSig) { lastSig = sig; sigAt = Date.now(); }
     const wait = sigAt + STABLE_MS - Date.now();
     if (need.size && wait > 0) return schedule(wait);
-    if (need.size) request([...new Set(texts)], lrcMode ? lrc.key : songKey(texts)); // the whole song, so Gemini gets full context
+    if (need.size) request([...new Set(texts)], lrcMode ? lrc.key : songKey(texts), null, lrcMode ? lrc.roman : null); // the whole song, so Gemini gets full context
   }
 
   // done (popup "Translate this song" button) = force a fresh translation, then re-render every line and report back.
-  function request(lines, key, done) {
+  // roman = { lang, lines } for romanized LRCLIB lyrics (see background.js detectRoman).
+  function request(lines, key, done, roman) {
     const { tl, translator } = settings;
     lines.forEach((l) => inflight.add(l));
     let resp;
     try {
-      resp = chrome.runtime.sendMessage({ type: 'lyrics', key, lines, tl, force: !!done });
+      resp = chrome.runtime.sendMessage({ type: 'lyrics', key, lines, tl, force: !!done, roman: roman || undefined });
     } catch (e) { return shutdown(); } // extension was reloaded/removed
     resp.then((res) => {
       lines.forEach((l) => inflight.delete(l));
       if (done) done(res ? { ok: res.ok, gemini: res.gemini } : {});
+      if (res && res.roman && lrc && lrc.key === key && lrc.roman) romanVerdict(res.roman);
       if (tl !== settings.tl || translator !== settings.translator) return schedule(0);
       if (done) gen++;
       const got = (res && res.results) || {};
@@ -155,21 +157,42 @@
 
   const romOf = (d, text) => (d && d.r && NON_LATIN.test(text) ? d.r : '');
 
+  // Romanized LRCLIB lyrics (v1.3.6): the answer names the final language ('' = Gemini says the lines aren't a
+  // romanization after all: they become ordinary lines) and where the original-script line comes from.
+  function romanVerdict(v) {
+    const was = lrc.verdict ? lrc.verdict.lang : lrc.roman.lang;
+    lrc.verdict = v;
+    if (!!was === !!v.lang) return;
+    for (const el of lrc.els) {
+      el.classList.toggle('amlt-roman', !!v.lang && lrc.roman.lines.includes(lineText(el)));
+      marks.delete(el); // re-rendered by the next scan
+    }
+  }
+
   // The block is appended INSIDE the h4 after its text node, so it inherits color, alignment and the
   // active-line highlight (and can become the main line when originals are hidden). React nodes are never moved or removed; if React resets the h4's
   // textContent our block is wiped and the next scan re-adds it.
+  // A romanized LRCLIB line (.amlt-roman, v1.3.6) gets a block of its own: the line's text IS the romanization, so it goes in
+  // the romanization slot, the translation is the main line, and the "Original lyrics" slot holds the original-script guess
+  // (Gemini, or hiragana for Japanese) if there is one, never the romaji again. See applyVisibility.
   function render(el, text, d, mark) {
     const old = ownBlock(el);
     if (old) { blocks.delete(old); old.remove(); }
     marks.set(el, mark);
     const block = document.createElement('div'); // stays empty (hidden) when there's nothing to add, so the line still gets the text size
-    block.className = 'amlt';
-    for (const [kind, value] of [['rom', romOf(d, text)], ['trans', d.t]]) {
+    const roman = el.classList.contains('amlt-roman') && /\p{L}/u.test(text);
+    block.className = roman ? 'amlt amlt-rblock' : 'amlt';
+    const parts = roman ? [['orig', d.o], ['rom', text], ['trans', d.t]] : [['rom', romOf(d, text)], ['trans', d.t]];
+    for (const [kind, value] of parts) {
       if (!value) continue;
       const line = document.createElement('div');
       line.className = 'amlt-' + kind;
       line.dir = 'auto';
       line.textContent = value;
+      if (kind === 'orig') {
+        line.classList.add('amlt-guess');
+        line.title = d.og === 'gemini' ? 'Original script guessed by Gemini from the romanized lyrics' : 'Hiragana guessed from the romanized lyrics (no kanji)';
+      }
       block.appendChild(line);
     }
     applyVisibility(block);
@@ -179,8 +202,20 @@
 
   // Only classes on OUR nodes change; content.css does the rest (incl. hiding the original when
   // .amlt-main is set and a translation is visible).
+  // Romanized lines (.amlt-rblock): the main (big) line is the original-script guess when "Original lyrics" is on and there
+  // is one, else the translation, else the romanization itself (it's the only text left, so it shows even with the
+  // Romanization toggle off); the romanization shows below the main line when its toggle is on.
   function applyVisibility(block) {
     const rom = block.querySelector('.amlt-rom'), trans = block.querySelector('.amlt-trans');
+    if (block.classList.contains('amlt-rblock')) {
+      const orig = block.querySelector('.amlt-orig');
+      const main = orig && settings.orig ? orig : trans && settings.trans ? trans : rom;
+      for (const el of [orig, rom, trans]) if (el) el.classList.toggle('amlt-big', el === main);
+      if (orig) orig.classList.toggle('amlt-off', orig !== main);
+      if (trans) trans.classList.toggle('amlt-off', !settings.trans);
+      if (rom) rom.classList.toggle('amlt-off', rom !== main && !settings.rom);
+      return;
+    }
     if (rom) rom.classList.toggle('amlt-off', !settings.rom);
     if (trans) trans.classList.toggle('amlt-off', !settings.trans);
     block.classList.toggle('amlt-main', !settings.orig);
@@ -216,6 +251,24 @@
     floatBtn.append(img);
     floatBtn.addEventListener('click', () => (panel ? closePanel() : openPanel()));
     document.body.appendChild(floatBtn);
+    gDot();
+  }
+  // Gemini status dot in the button's corner (v1.3.6): same colors and meaning as the popup's indicator (the background
+  // works it out), only while Gemini is the selected translator; the tooltip names the state. Refreshed on status changes.
+  let gSeq = 0;
+  function gDot() {
+    if (!floatBtn || dead) return;
+    const seq = ++gSeq;
+    let resp;
+    try { resp = chrome.runtime.sendMessage({ type: 'gstate' }); } catch (e) { return; }
+    resp.then((g) => {
+      if (seq !== gSeq || !floatBtn) return;
+      let dot = floatBtn.querySelector('.amlt-gdot');
+      if (!g || !g.show) { if (dot) dot.remove(); floatBtn.title = 'Lyrics Translate'; return; }
+      if (!dot) { dot = document.createElement('span'); dot.className = 'amlt-gdot'; floatBtn.append(dot); }
+      dot.dataset.state = g.state;
+      floatBtn.title = 'Lyrics Translate \u00b7 ' + g.label;
+    }, () => {});
   }
   function openPanel() {
     panel = document.createElement('iframe');
@@ -534,9 +587,10 @@
     scroll.className = 'amlt-stage-scroll';
     const list = document.createElement('div');
     list.className = 'amlt-stage-list';
+    const roman = data.roman ? { lang: data.roman, lines: data.romanLines || [] } : null;
     const els = rows.map(([, text]) => {
       const line = document.createElement('div');
-      line.className = 'amlt-stage-line';
+      line.className = 'amlt-stage-line' + (roman && roman.lines.includes(text) ? ' amlt-roman' : '');
       line.dir = 'auto';
       line.textContent = text || '\u266a';
       return line;
@@ -550,7 +604,7 @@
     root.append(scroll, credit);
     let userAt = 0;
     for (const ev of ['wheel', 'touchmove', 'pointerdown']) scroll.addEventListener(ev, () => { userAt = Date.now(); }, { passive: true });
-    lrc = { id: p.id, key: p.key, root, scroll, list, els, synced, times: synced ? rows.map(([t]) => t) : [], active: -1, jumped: false, box: '', userAt: () => userAt };
+    lrc = { id: p.id, key: p.key, root, scroll, list, els, synced, roman, verdict: null, times: synced ? rows.map(([t]) => t) : [], active: -1, jumped: false, box: '', userAt: () => userAt };
     document.body.appendChild(root);
     placeLrc(st);
     anchor = null;
@@ -668,7 +722,9 @@
   }
 
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync' || dead) return;
+    if (dead) return;
+    if (area === 'local' ? changes.geminiStatus || changes.geminiKey : area === 'sync' && changes.translator) gDot();
+    if (area !== 'sync') return;
     const prev = settings.tl + '|' + settings.translator;
     for (const k of Object.keys(settings)) if (changes[k]) settings[k] = changes[k].newValue;
     applySize();
@@ -696,9 +752,11 @@
     const lines = [...new Set(texts)];
     const key = fromLrc ? lrc.key : songKey(texts);
     if (msg.type === 'song') {
-      return send({ ...now, key, lines, source: fromLrc ? 'lrclib' : 'amazon', lrc: fromLrc ? lrcStatus() : undefined, pending: lines.some((l) => inflight.has(l)), failed: lines.some((l) => retryAt.get(l) > Date.now()) });
+      // roman (v1.3.6): romanized LRCLIB lyrics: { lang, guess } (guess: 'gemini' | 'local' | '' = none; undefined = not known yet)
+      const roman = fromLrc && lrc.roman ? (lrc.verdict ? { lang: lrc.verdict.lang, guess: lrc.verdict.guess } : { lang: lrc.roman.lang }) : undefined;
+      return send({ ...now, key, lines, source: fromLrc ? 'lrclib' : 'amazon', lrc: fromLrc ? lrcStatus() : undefined, roman, pending: lines.some((l) => inflight.has(l)), failed: lines.some((l) => retryAt.get(l) > Date.now()) });
     }
-    if (msg.type === 'force') { request(lines, key, send); return true; }
+    if (msg.type === 'force') { request(lines, key, send, fromLrc ? lrc.roman : null); return true; }
   });
 
   chrome.storage.sync.get(settings).then((s) => {

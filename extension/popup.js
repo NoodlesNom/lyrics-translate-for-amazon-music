@@ -46,7 +46,7 @@ async function findSong() {
   showSong(name, detail);
   const kind = noteKind(song);
   $('lrcNote').hidden = !kind;
-  $('lrcNote').textContent = NOTES[kind] || '';
+  $('lrcNote').textContent = romanNote(song, kind) || NOTES[kind] || '';
   $('lrcNote').dataset.kind = kind;
 }
 // "This song: <title> by <artist>" (at most 2 lines, full text in the tooltip), then the language/translation state on its
@@ -72,6 +72,14 @@ const NOTES = {
   none: 'Amazon has no lyrics; none found on LRCLIB',
   error: "Amazon has no lyrics; LRCLIB didn't answer, will retry",
 };
+// v1.3.6: LRCLIB only had a romanization (romaji, Korean romanization, pinyin); shown while those lyrics are on screen.
+const ROMAN_GUESS = { gemini: ' · original script guessed by Gemini', local: ' · original: hiragana guess' };
+function romanNote(s, kind) {
+  const r = s && s.roman;
+  if (!r || !r.lang || (kind !== 'synced' && kind !== 'unsynced')) return '';
+  const guess = r.guess ? ROMAN_GUESS[r.guess] || '' : r.guess === '' && r.lang !== 'ja' ? ' · original script needs Gemini' : '';
+  return `LRCLIB lyrics were already romanized (${langName(r.lang)})${guess}${kind === 'unsynced' ? ' · not synced' : ''}`;
+}
 function noteKind(s) {
   if (!s) return '';
   if (s.key) return s.source === 'lrclib' ? s.lrc || '' : '';
