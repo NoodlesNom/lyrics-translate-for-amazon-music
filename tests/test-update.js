@@ -11,6 +11,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
 const check = (name, cond, info = '') => { results.push([cond ? 'PASS' : 'FAIL', name, info]); console.log(cond ? 'PASS' : 'FAIL', name, info); };
 const REL = 'https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases';
+const VER = JSON.parse(fs.readFileSync(EXT + '/manifest.json', 'utf8')).version; // the installed version (1.3.5)
+const VRE = VER.replace(/\./g, '\\.');
 
 let mode = 'newer', delay = 0, gh = [];
 async function onGithub(route) {
@@ -18,7 +20,7 @@ async function onGithub(route) {
   if (delay) await sleep(delay);
   const rel = (tag, url = `${REL}/tag/${tag}`) => route.fulfill({ contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ tag_name: tag, html_url: url, name: tag, draft: false, prerelease: false }) });
   if (mode === 'newer') return rel('v1.3.10');
-  if (mode === 'same') return rel('v1.3.4');
+  if (mode === 'same') return rel('v' + VER);
   if (mode === 'older') return rel('v1.3.3');
   if (mode === 'badurl') return rel('v1.3.11', 'https://evil.example/download');
   if (mode === '403') return route.fulfill({ status: 403, headers: { 'Access-Control-Allow-Origin': '*' }, contentType: 'application/json', body: '{"message":"API rate limit exceeded"}' });
@@ -48,7 +50,7 @@ const waitGh = async (n, t = 10000) => { const t0 = Date.now(); while (gh.length
 
 (async () => {
   const manifest = JSON.parse(fs.readFileSync(EXT + '/manifest.json', 'utf8'));
-  check('manifest 1.3.4: still only "storage" + the same four hosts (no management, alarms or GitHub host permission)', manifest.version === '1.3.4'
+  check('manifest 1.3.5: still only "storage" + the same four hosts (no management, alarms or GitHub host permission)', manifest.version === '1.3.5'
     && JSON.stringify(manifest.permissions) === '["storage"]'
     && JSON.stringify(manifest.host_permissions) === JSON.stringify(['https://clients5.google.com/*', 'https://translate.googleapis.com/*', 'https://generativelanguage.googleapis.com/*', 'https://lrclib.net/*']), JSON.stringify([manifest.permissions, manifest.host_permissions]));
 
@@ -65,7 +67,7 @@ const waitGh = async (n, t = 10000) => { const t0 = Date.now(); while (gh.length
   await sleep(500);
   let upd = await local('upd');
   check('unpacked: result stored in chrome.storage.local (latest 1.3.10, release page, time)', upd && upd.latest === '1.3.10' && upd.url === `${REL}/tag/v1.3.10` && Date.now() - upd.at < 15000 && !upd.err, JSON.stringify(upd));
-  check('unpacked: newer release (1.3.10 > 1.3.4, numeric compare) → badge "NEW"', (await badge()) === 'NEW');
+  check(`unpacked: newer release (1.3.10 > ${VER}, numeric compare) → badge "NEW"`, (await badge()) === 'NEW');
   const bg = await sw.evaluate(() => chrome.action.getBadgeBackgroundColor({}));
   check('unpacked: badge color is the subtle blue #1a6fd1', JSON.stringify(bg) === JSON.stringify([26, 111, 209, 255]), JSON.stringify(bg));
 
@@ -90,13 +92,13 @@ const waitGh = async (n, t = 10000) => { const t0 = Date.now(); while (gh.length
   await pop.waitForTimeout(250);
   P = await popState(pop);
   check('button after the cooldown: "Checking…" while the request runs (button disabled)', P.msg === 'Checking…' && (await pop.$eval('#updBtn', (b) => b.disabled)), P.msg);
-  check('…then "You\'re up to date (v1.3.4)", 1 new request', (await waitMsg(pop, /^You're up to date \(v1\.3\.4\)$/)) && gh.length === 2, (await popState(pop)).msg + ' reqs=' + gh.length);
+  check(`…then "You're up to date (v${VER})", 1 new request`, (await waitMsg(pop, new RegExp(`^You're up to date \\(v${VRE}\\)$`))) && gh.length === 2, (await popState(pop)).msg + ' reqs=' + gh.length);
   await pop.waitForTimeout(300);
   P = await popState(pop);
   check('versions match → badge cleared and the update line hidden', (await badge()) === '' && P.newHidden, JSON.stringify([await badge(), P.newHidden]));
   delay = 0;
   await pop.click('#updBtn');
-  check('clicking again right away: "Checked just now · You\'re up to date (v1.3.4)", no request', (await waitMsg(pop, /^Checked just now · You're up to date \(v1\.3\.4\)$/)) && gh.length === 2, (await popState(pop)).msg);
+  check(`clicking again right away: "Checked just now · You're up to date (v${VER})", no request`, (await waitMsg(pop, new RegExp(`^Checked just now · You're up to date \\(v${VRE}\\)$`))) && gh.length === 2, (await popState(pop)).msg);
   for (let i = 0; i < 3; i++) await pop.click('#updBtn');
   await pop.waitForTimeout(400);
   check('several quick clicks: still no request (cooldown)', gh.length === 2, String(gh.length));
@@ -104,7 +106,7 @@ const waitGh = async (n, t = 10000) => { const t0 = Date.now(); while (gh.length
   let n0 = 0;
   const back = async () => setUpd({ ...(await local('upd')), at: Date.now() - 120e3 });
   const clickFor = async (m, re) => { mode = m; await back(); const n = gh.length; await pop.click('#updBtn'); const ok = await waitMsg(pop, re); await pop.waitForTimeout(300); return ok && gh.length === n + 1; };
-  check('older release on GitHub (v1.3.3): up to date, no badge', (await clickFor('older', /^You're up to date \(v1\.3\.4\)$/)) && (await badge()) === '' && (await popState(pop)).newHidden);
+  check('older release on GitHub (v1.3.3): up to date, no badge', (await clickFor('older', new RegExp(`^You're up to date \\(v${VRE}\\)$`))) && (await badge()) === '' && (await popState(pop)).newHidden);
   check('newer again: update line + badge come back', (await clickFor('newer', /^Update available: v1\.3\.10$/)) && (await badge()) === 'NEW' && !(await popState(pop)).newHidden);
   check('HTTP 403 (rate limit): short message, last known release kept (badge + update line stay)', (await clickFor('403', /^GitHub is limiting requests right now\. Try again later\.$/))
     && (await badge()) === 'NEW' && !(await popState(pop)).newHidden && (await local('upd')).err === 'ratelimit' && (await local('upd')).latest === '1.3.10', JSON.stringify(await local('upd')));
@@ -119,12 +121,12 @@ const waitGh = async (n, t = 10000) => { const t0 = Date.now(); while (gh.length
   // ---- daily automatic check (worker start / popup / content-script messages), no alarms ----
   const resetGuard = () => sw.evaluate(() => { autoCheckedAt = 0; });
   mode = 'newer';
-  await setUpd({ at: Date.now() - 23 * 36e5, latest: '1.3.4', url: `${REL}/tag/v1.3.4`, err: '' });
+  await setUpd({ at: Date.now() - 23 * 36e5, latest: VER, url: `${REL}/tag/v${VER}`, err: '' });
   await pop.waitForTimeout(300);
   await resetGuard(); let n = gh.length;
   await pop.reload(); await pop.waitForTimeout(1200);
   check('auto: last check 23 h ago → popup open makes no request', gh.length === n, String(gh.length - n));
-  await setUpd({ at: Date.now() - 25 * 36e5, latest: '1.3.4', url: `${REL}/tag/v1.3.4`, err: '' });
+  await setUpd({ at: Date.now() - 25 * 36e5, latest: VER, url: `${REL}/tag/v${VER}`, err: '' });
   await resetGuard(); n = gh.length;
   const page = await ctx.newPage();
   await page.goto('https://music.amazon.com/?song=5');
@@ -132,10 +134,10 @@ const waitGh = async (n, t = 10000) => { const t0 = Date.now(); while (gh.length
   check('auto: last check 25 h ago → a content-script message (lyrics on the Amazon page) triggers 1 request', (await waitGh(n + 1, 8000)) && gh.length === n + 1, String(gh.length - n));
   await sleep(500);
   check('auto: …badge "NEW", and the open popup updates itself (update line shown)', (await badge()) === 'NEW' && !(await popState(pop)).newHidden);
-  await setUpd({ at: Date.now() - 2 * 36e5, latest: '1.3.4', url: '', err: 'offline' });
+  await setUpd({ at: Date.now() - 2 * 36e5, latest: VER, url: '', err: 'offline' });
   await resetGuard(); n = gh.length; await pop.reload(); await pop.waitForTimeout(1200);
   check('auto: failed check 2 h ago → not retried yet (retry after 3 h)', gh.length === n, String(gh.length - n));
-  await setUpd({ at: Date.now() - 4 * 36e5, latest: '1.3.4', url: '', err: 'offline' });
+  await setUpd({ at: Date.now() - 4 * 36e5, latest: VER, url: '', err: 'offline' });
   await resetGuard(); n = gh.length; await pop.reload();
   check('auto: failed check 4 h ago → retried on popup open', (await waitGh(n + 1, 5000)) && gh.length === n + 1, String(gh.length - n));
   await sleep(400);
@@ -154,7 +156,7 @@ const waitGh = async (n, t = 10000) => { const t0 = Date.now(); while (gh.length
     isStoreCopy('abcdefghijklmnopabcdefghijklmnop', 'development')]);
   check('install type: store ID → store even if "development"; normal/sideload/admin/unknown → store; only development (other ID) → unpacked',
     JSON.stringify(kinds) === JSON.stringify([true, true, true, true, true, false]), JSON.stringify(kinds));
-  await setUpd({ at: Date.now(), latest: '1.3.4', url: `${REL}/tag/v1.3.4`, err: '' });
+  await setUpd({ at: Date.now(), latest: VER, url: `${REL}/tag/v${VER}`, err: '' });
   await sw.evaluate(() => chrome.action.setBadgeText({ text: 'NEW' }));
   await sw.evaluate(() => applyBadge());
   check('after updating (stored latest = this version), the worker clears the badge', (await badge()) === '');

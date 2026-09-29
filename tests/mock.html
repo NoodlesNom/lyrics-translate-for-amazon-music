@@ -138,6 +138,8 @@
     16: { title: 'Lantern Bay (Test)', artist: 'English Mock', lines: ['The ferry lights are blinking slow', 'We trade our coats for summer air',
       '\u300c港の灯りが揺れている\u300d', 'I hum the chorus, half asleep', '\u2014 and the gulls reply \u266a', '猫が屋根で眠る',
       'Salt on the window, sun on the stairs', 'We\u2019ll be home before the tide', 'Paper boats in a row\u2026'] },
+    // A long song for the ?amz=scroll tests (invented lines, numbered so every line is distinct).
+    17: { title: 'Night Ferry (Test)', artist: 'Mock Scroller', dur: 200, lines: Array.from({ length: 40 }, (_, i) => ['港の灯りが揺れている', '白い船が静かに進む', '窓の外に雪が降る', '古い地図を広げて歩く'][i % 4] + ' ' + '一二三四五六七八九十'[Math.floor(i / 4)]) },
     // Amazon has NO lyrics for these: no "Lyrics available" badge (unless ?badge= says otherwise)
     9: { title: 'Glass Harbor (Test)', artist: 'Mock Singer', dur: 200, lines: [], nolyrics: true },
     10: { title: 'Tin Roof (Test)', artist: 'Mock Singer & Guest', dur: 180, lines: [], nolyrics: true },
@@ -303,7 +305,7 @@
   let tick = 0, cur = 0;
   setInterval(() => {                               // playback clock + moving active highlight (style attribute only)
     document.getElementById('clock').textContent = `tick ${++tick % 60}`;
-    document.querySelectorAll('div[style*="padding-top: 191px"] > div > h4').forEach((h, i, all) => h.setAttribute('style', i === cur % all.length ? ACTIVE : H4_STYLE));
+    if (!amzMode) document.querySelectorAll('div[style*="padding-top: 191px"] > div > h4').forEach((h, i, all) => h.setAttribute('style', i === cur % all.length ? ACTIVE : H4_STYLE));
     cur++;
   }, 500);
   // Like a player that auto-scrolls: center line i using the rows' actual heights (sum of row boxes above it).
@@ -313,6 +315,51 @@
     for (let k = 0; k < i; k++) y += rows[k].offsetHeight + parseFloat(getComputedStyle(rows[k]).marginBottom);
     sc.scrollTop = y - sc.clientHeight / 2 + rows[i].offsetHeight / 2;
   };
+  // ?amz=scroll: Amazon's own lyrics scrolling as measured live (2026-09-28), instead of the cycling highlight above.
+  // The current line follows the player clock (line i from 0:02 + 4 s * i). On an ordinary line change Amazon smoothly
+  // centers the real row. On a SEEK (a jump of more than one line) no line is white for 150 ms, then Amazon jumps to its
+  // own estimate, index * 53 px (its unannotated row height, ignoring rows made taller by the extension), and applies it
+  // once more 400 ms later. After wheel/touch input on the lyrics Amazon doesn't auto-scroll for 3 s.
+  // window.amz records Amazon's scroll writes and every scroll event, so tests can tell who scrolled.
+  const amzMode = params.get('amz') === 'scroll';
+  const EST = 53;
+  window.amz = { writes: [], log: [], userAt: 0, active: -1, seeks: 0 };
+  if (amzMode) {
+    const rows = () => [...document.querySelectorAll('div[style*="padding-top: 191px"] > div')];
+    const setWhite = (idx) => rows().forEach((r, i) => { const h = r.querySelector('h4'); const st = i === idx ? ACTIVE : H4_STYLE; if (h.getAttribute('style') !== st) h.setAttribute('style', st); });
+    const amzScroll = (top, smooth) => {
+      if (Date.now() - amz.userAt < 3000) return;
+      top = Math.max(0, Math.min(scroller.scrollHeight - scroller.clientHeight, Math.round(top)));
+      amz.writes.push({ t: performance.now(), top, smooth });
+      if (smooth) scroller.scrollTo({ top, behavior: 'smooth' }); else scroller.scrollTop = top;
+      if (!smooth) { // where Amazon's jump alone leaves the current row: px of its top/bottom below the scroller's top
+        const h = rows()[amz.active], a = h && h.getBoundingClientRect(), b = scroller.getBoundingClientRect();
+        if (a) Object.assign(amz.writes[amz.writes.length - 1], { rowTop: Math.round(a.top - b.top), rowBottom: Math.round(a.bottom - b.top), height: scroller.clientHeight });
+      }
+    };
+    const estimate = (i) => 191 + i * EST + EST / 2 - scroller.clientHeight / 2;
+    const real = (i) => { const r = rows()[i]; if (!r) return 0; const a = r.getBoundingClientRect(), b = scroller.getBoundingClientRect(); return a.top - b.top + scroller.scrollTop + a.height / 2 - scroller.clientHeight / 2; };
+    scroller.addEventListener('scroll', () => amz.log.push({ t: performance.now(), top: scroller.scrollTop }), { passive: true });
+    for (const ev of ['wheel', 'touchstart', 'touchmove', 'pointerdown']) scroller.addEventListener(ev, () => { amz.userAt = Date.now(); }, { passive: true });
+    let pending = 0;
+    setInterval(() => {
+      const n = rows().length;
+      if (!n) return;
+      const idx = Math.max(-1, Math.min(n - 1, Math.floor((player.now() - 2) / 4)));
+      if (idx === amz.active) return;
+      const jump = Math.abs(idx - amz.active) > 1;
+      amz.active = idx;
+      clearTimeout(pending);
+      if (!jump) { setWhite(idx); if (idx >= 0) amzScroll(real(idx), true); return; }
+      amz.seeks++;
+      setWhite(-1);
+      pending = setTimeout(() => {
+        setWhite(idx);
+        amzScroll(estimate(idx), false);
+        pending = setTimeout(() => { if (amz.active === idx) amzScroll(estimate(idx), false); }, 400);
+      }, 150);
+    }, 50);
+  }
   window.amltInserts = 0;                           // counts annotation blocks added (loop detection)
   new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => { if (n.classList && n.classList.contains('amlt')) window.amltInserts++; })))
     .observe(document.body, { childList: true, subtree: true });

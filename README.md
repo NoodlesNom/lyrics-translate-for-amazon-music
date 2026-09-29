@@ -39,6 +39,7 @@ The developer collects no data and there are no analytics. The lyric lines on sc
 
 Newest first.
 
+- **1.3.5:** Fixed: after jumping ahead in a song, the highlighted line could scroll off screen (worse with big text). The current line is now brought back to the middle of Amazon's lyrics right away; the extension leaves the lyrics alone for 3 seconds after you scroll them yourself. No new permissions.
 - **1.3.4:** copies installed with **Load unpacked** now tell you when a new version is out (a **NEW** badge and an "Update available" line in the popup with a download link) and get a **Check for updates** button. They read the latest version number from GitHub about once a day. Store copies are unchanged: they never check and update automatically. No new permissions.
 - **1.3.3:** smarter language check. Songs already in your language never go to Gemini, even with symbols, emoji or a look-alike letter from another alphabet; a mostly English song with a few foreign lines only gets those lines translated. The popup says e.g. "Mostly English · translated 2 lines with Gemini".
 - **1.3.2:** LRCLIB lyrics are shown in Amazon's full view, in the spot and style of Amazon's own lyrics (white current line, dim other lines), with a small "Lyrics from LRCLIB" credit.

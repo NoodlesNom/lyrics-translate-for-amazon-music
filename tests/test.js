@@ -150,6 +150,10 @@ const isLatin = (s) => !/[^\P{L}\p{Script=Latin}]/u.test(s);
   const overlap = bx.some((b, i) => (i && b.top < bx[i - 1].bottom - 0.5) || b.blockBottom > b.bottom + 0.5 || b.h4Bottom > b.bottom + 0.5);
   check('Extra large (40.6px / 26.1px): rows grow to fit, no row or annotation overlaps the next', !overlap && (await layout(page)).filter((x) => x.hasTr).every((x) => x.trSize === '40.6px' && x.romSize === '26.1px'), JSON.stringify(bx.slice(0, 2)));
   const nearEnd = bx.length - 2;
+  // v1.3.5: the extension re-centers the white line (which cycles through the lines in this mock) unless the user just
+  // scrolled the lyrics, so a user wheel comes first: this check is about rows being tall enough, not about who scrolls.
+  const scBox = await page.locator('[data-testid="Stage_OverlaysContainer"] .r-150rngu').boundingBox();
+  await page.mouse.move(scBox.x + scBox.width / 2, scBox.y + scBox.height / 2); await page.mouse.wheel(0, 40); await page.waitForTimeout(100);
   await page.evaluate((i) => window.scrollToLine(i), nearEnd); await page.waitForTimeout(200);
   const vis = await page.evaluate((i) => {
     const sc = document.querySelector('[data-testid="Stage_OverlaysContainer"] .r-150rngu').getBoundingClientRect();

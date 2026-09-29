@@ -101,6 +101,7 @@
     if (dead) return;
     const amazon = findLines();
     checkLrc(amazon.length > 0);
+    watchAmazon(amazon);
     if (!settings.rom && !settings.trans) return;
     const lrcMode = !amazon.length && !!lrc;
     const need = new Set();
@@ -227,6 +228,116 @@
   document.addEventListener('click', (e) => { if (panel && !(floatBtn && floatBtn.contains(e.target))) closePanel(); }, true);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); }, true);
   window.addEventListener('message', (e) => { if (panel && e.source === panel.contentWindow && e.data === 'amlt-close') closePanel(); }); // Esc inside the panel
+
+  // ===================== Amazon's full view: keep the current line on screen =====================
+  // Amazon's lyrics scroller (Stage_OverlaysContainer > scroller > list > one row per line > h4) scrolls by ITS row
+  // heights, so after a seek, with our blocks making every row taller, its current line (the h4 with inline color white)
+  // can land far below the visible area. While Amazon's lines are shown we watch that scroller and, whenever the current
+  // line changes, the scroller scrolls or rows resize, center the current row if it isn't fully visible or sits more
+  // than a quarter of the scroller's height from the middle. Smooth for short moves, instant for jumps of more than a
+  // screen. Paused for 3 s after the user wheels/touches/drags the lyrics. Our own LRCLIB lyrics (.amlt-stage) have
+  // their own scroller and never go through this.
+  const KEEP_DELAY = 100, KEEP_MAX_WAIT = 300, USER_PAUSE = 3000, BAND = 0.25, PER_SEC = 4;
+  const USER_EVENTS = ['wheel', 'touchmove', 'pointerdown'];
+  let keep = null; // { sc, list, mo, ro, timer, first, userAt, ownUntil, hits, row, rowN, lastAt, wanted }
+  const isWhite = (c) => {
+    c = (c || '').replace(/\s+/g, '').toLowerCase();
+    if (c === 'white' || c === '#fff' || c === '#ffffff') return true;
+    const m = /^rgba?\((\d+),(\d+),(\d+)(?:,([\d.]+))?\)$/.exec(c);
+    return !!m && +m[1] >= 250 && +m[2] >= 250 && +m[3] >= 250 && (m[4] === undefined || +m[4] >= 0.9);
+  };
+  // The current line: the h4 whose inline color is white (computed color only if Amazon sets no inline colors at all).
+  function currentLine(sc) {
+    const all = sc.querySelectorAll('h4[role="heading"]');
+    let inline = false;
+    for (const h of all) { const c = h.style.color; if (c) { inline = true; if (isWhite(c)) return h; } }
+    if (inline) return null; // e.g. right after a seek no line is white yet: wait for one
+    for (const h of all) if (isWhite(getComputedStyle(h).color)) return h;
+    return null;
+  }
+  function scrollerOf(h4) {
+    for (let n = h4.parentElement, i = 0; n && n !== document.body && i < 6; n = n.parentElement, i++) {
+      if (n.matches(STAGE_LYRICS)) return null;
+      const oy = getComputedStyle(n).overflowY;
+      if (oy === 'scroll' || oy === 'auto') return n;
+    }
+    return null;
+  }
+  function watchAmazon(lines) {
+    const h4 = !dead && lines[0];
+    const list = h4 && h4.parentElement && h4.parentElement.parentElement;
+    if (keep && list && keep.list === list && keep.sc.isConnected && keep.sc.contains(list)) return; // same list: nothing to do
+    const sc = h4 ? scrollerOf(h4) : null;
+    unwatchAmazon();
+    if (!sc || !list) return;
+    const k = keep = { sc, list, timer: 0, first: 0, userAt: 0, ownUntil: 0, hits: [], row: null, rowN: 0, lastAt: 0, wanted: false };
+    k.onScroll = () => { if (Date.now() < k.ownUntil) return; keepSoon('scroll'); };
+    // User scrolling: wheel, touch drags, and pressing the scroller itself (its scrollbar). A plain click or tap on a line
+    // is not scrolling, so it doesn't delay centering (in case Amazon seeks on click).
+    k.onUser = (e) => { if (e.type !== 'pointerdown' || e.target === sc) k.userAt = Date.now(); };
+    sc.addEventListener('scroll', k.onScroll, { passive: true });
+    for (const ev of USER_EVENTS) sc.addEventListener(ev, k.onUser, { passive: true });
+    // Current line (inline style of an h4), rows mounting, our blocks arriving; plus size changes of list and scroller.
+    k.mo = new MutationObserver(() => keepSoon('change'));
+    k.mo.observe(sc, { subtree: true, childList: true, attributes: true, attributeFilter: ['style'] });
+    k.ro = new ResizeObserver(() => keepSoon('change'));
+    k.ro.observe(sc); k.ro.observe(list);
+    keepSoon('change');
+  }
+  function unwatchAmazon() {
+    if (!keep) return;
+    const k = keep;
+    keep = null;
+    clearTimeout(k.timer);
+    k.mo.disconnect(); k.ro.disconnect();
+    k.sc.removeEventListener('scroll', k.onScroll);
+    for (const ev of USER_EVENTS) k.sc.removeEventListener(ev, k.onUser);
+  }
+  // Debounced (KEEP_DELAY after the last trigger, at most KEEP_MAX_WAIT after the first), so a burst of changes costs one check.
+  function keepSoon(why, delay = KEEP_DELAY) {
+    const k = keep;
+    if (!k) return;
+    if (why !== 'scroll') k.wanted = true; // a real change (not just scrolling) is worth a check once a user pause ends
+    const now = Date.now();
+    if (!k.timer) k.first = now;
+    else if (why !== 'retry' && now + delay - k.first > KEEP_MAX_WAIT) return;
+    clearTimeout(k.timer);
+    k.timer = setTimeout(keepCheck, delay);
+  }
+  function keepCheck() {
+    const k = keep;
+    if (!k) return;
+    k.timer = 0;
+    if (dead || !k.sc.isConnected) return unwatchAmazon();
+    const now = Date.now();
+    const paused = k.userAt + USER_PAUSE - now;
+    if (paused > 0) { if (k.wanted) keepSoon('retry', paused + 50); return; } // the user is reading/scrolling: hands off
+    if (now < k.ownUntil) return keepSoon('retry', k.ownUntil - now + 20); // our own smooth scroll is still running
+    k.wanted = false;
+    const h4 = currentLine(k.sc);
+    if (!h4) return;
+    const row = h4.parentElement && h4.parentElement !== k.list && k.list.contains(h4.parentElement) ? h4.parentElement : h4;
+    const sr = k.sc.getBoundingClientRect(), rr = row.getBoundingClientRect();
+    const H = k.sc.clientHeight;
+    if (!H || !rr.height) return;
+    const top = rr.top - sr.top - k.sc.clientTop, bottom = top + rr.height, mid = (top + bottom) / 2;
+    if (top >= -1 && bottom <= H + 1 && Math.abs(mid - H / 2) <= H * BAND) return; // comfortable: leave Amazon alone
+    const target = Math.round(Math.max(0, Math.min(k.sc.scrollHeight - H, k.sc.scrollTop + mid - H / 2)));
+    const dist = Math.abs(target - k.sc.scrollTop);
+    if (dist < 2) return; // already as centered as it can be (first/last lines, rows taller than the scroller)
+    // No fighting: at most PER_SEC corrections a second; the same line gets 3 quick ones, then one per 0.3 s, then per 2 s.
+    if (row !== k.row) { k.row = row; k.rowN = 0; }
+    k.hits = k.hits.filter((t) => now - t < 1000);
+    const gap = k.rowN < 3 ? 0 : k.rowN < 6 ? 300 : 2000;
+    const wait = Math.max(k.hits.length >= PER_SEC ? k.hits[0] + 1000 - now : 0, k.lastAt + gap - now);
+    if (wait > 0) return keepSoon('retry', wait + 10);
+    k.hits.push(now); k.lastAt = now; k.rowN++;
+    const smooth = dist <= H;
+    // Scroll events caused by our own scroll are ignored; one check afterwards catches Amazon scrolling back meanwhile.
+    k.ownUntil = now + (smooth ? 700 : 60);
+    k.sc.scrollTo({ top: target, behavior: smooth ? 'smooth' : 'instant' }); // 'instant' even if the page sets scroll-behavior: smooth
+    keepSoon('retry', smooth ? 750 : 150);
+  }
 
   // ===================== LRCLIB fallback: synced lyrics when Amazon has none =====================
   // A song counts as lyric-less when (1) a title is shown (mini-player, or the full view's Stage_Title while that's
@@ -548,6 +659,7 @@
     observer.disconnect();
     clearTimeout(timer);
     hideLrc();
+    unwatchAmazon();
   }
 
   chrome.storage.onChanged.addListener((changes, area) => {
