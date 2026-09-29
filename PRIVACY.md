@@ -1,6 +1,6 @@
 # Privacy Policy: Lyrics Translate & Romanize for Amazon Music
 
-_Effective date: September 28, 2026_
+_Effective date: September 28, 2026 · Last updated: September 28, 2026_
 
 This policy covers the Microsoft Edge extension "Lyrics Translate & Romanize for Amazon Music" (the "extension"), published by NoodlesNom. The extension is not affiliated with Amazon.
 
@@ -8,8 +8,8 @@ This policy covers the Microsoft Edge extension "Lyrics Translate & Romanize for
 
 - **The developer collects no data.** There are no analytics, no trackers, no advertising, no accounts and no servers run by the developer. Nothing is ever sent to the developer.
 - **Lyric lines are sent to Google only to translate or romanize them.** The lyric lines shown on screen in the Amazon Music web player go to Google Translate, and to Google Gemini if you added your own API key.
-- **For songs Amazon has no lyrics for, the song's title, artist and duration are sent to LRCLIB** (lrclib.net), a free lyrics database, to find lyrics for them. You can turn this off in the popup ("Find lyrics when Amazon has none").
-- **Everything else stays in your browser.** Your Gemini key and the translation cache are kept in the extension's local storage, and your settings in the extension's sync storage. Removing the extension clears them.
+- **For songs Amazon has no lyrics for, the song's title, artist and duration are sent to LRCLIB** (lrclib.net), a free, open lyrics database that needs no account or key, to find lyrics for them. Nothing else is sent to LRCLIB: no personal data, no cookies, no account or listening history. This is on by default and you can turn it off in the popup ("Find lyrics when Amazon has none"); when it's off, nothing is ever sent to LRCLIB.
+- **Everything else stays in your browser.** Your Gemini key, the translation cache and the LRCLIB lyrics cache are kept in the extension's local storage, and your settings in the extension's sync storage. Removing the extension clears them.
 
 ## What the extension reads
 
@@ -29,7 +29,7 @@ It does not read cookies, your account, your listening history, or any other sit
 | Google Gemini API (`generativelanguage.googleapis.com`) | The song's lyric lines, the target language, and **your own** API key (in a request header) | Only if you saved a Gemini key and Gemini is selected, and the song isn't already in your target language | To translate the lines |
 | LRCLIB (`lrclib.net`) | The song's **title, artist and duration** (in seconds), plus a header naming the extension (`Lrclib-Client`) | Only when Amazon Music shows no lyrics for the song, "Find lyrics when Amazon has none" is on (default), and the song isn't already in the cache | To find the song's lyrics (synced if available) |
 
-Requests are made without cookies (`credentials: omit`). Apart from the title, artist and duration sent to LRCLIB as described above, no song titles, artist names, history, identifiers or other personal data are sent. LRCLIB is an independent third-party service; see [lrclib.net](https://lrclib.net). Google processes its requests under its own terms and privacy policy ([Google Privacy Policy](https://policies.google.com/privacy), [Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms)). On Gemini's free tier, Google may use submitted content to improve its products.
+Requests are made without cookies (`credentials: omit`). Apart from the title, artist and duration sent to LRCLIB as described above, no song titles, artist names, history, identifiers or other personal data are sent. Lyrics found on LRCLIB are shown in Amazon's full view and, like Amazon's own lyrics, their lines are sent to Google Translate (or Gemini) only to translate or romanize them. LRCLIB is an independent third-party service; see [lrclib.net](https://lrclib.net). Google processes its requests under its own terms and privacy policy ([Google Privacy Policy](https://policies.google.com/privacy), [Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms)). On Gemini's free tier, Google may use submitted content to improve its products.
 
 ## What is stored, and where
 

@@ -56,10 +56,30 @@ footer a { color: var(--muted); }
 .doc h1 { font-size: 36px; margin: 0 0 6px; }
 .doc h2 { font-size: 22px; margin: 34px 0 8px; }
 .doc p, .doc li { color: #cdd6da; }
+.pill { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 20px; padding: 5px 14px 5px 5px; border-radius: 999px; border: 1px solid rgba(37, 209, 218, .35); background: rgba(37, 209, 218, .08); color: var(--text); text-decoration: none; font-size: 14px; }
+.pill b { white-space: nowrap; flex: none; background: var(--accent); color: #062326; border-radius: 999px; padding: 2px 10px; font-size: 12px; }
+.pill:hover { border-color: var(--accent); }
+.tag { display: inline-block; vertical-align: middle; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: rgba(37, 209, 218, .16); color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.split .tag { margin: 0 0 10px; }
+.card { position: relative; }
+.card .icon + .tag { position: absolute; top: 28px; right: 22px; margin: 0; }
+.grid > .card.new { grid-column: 1 / -1; }
+.grid.four { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.doc .table-wrap { overflow-x: auto; }
+.card.new { border-color: rgba(37, 209, 218, .45); background: linear-gradient(160deg, rgba(37, 209, 218, .10), var(--panel) 60%); }
+ul.ticks { list-style: none; padding: 0; margin: 14px 0 0; }
+ul.ticks li { position: relative; padding-left: 26px; margin: 8px 0; }
+ul.ticks li::before { content: "✓"; position: absolute; left: 0; top: 0; color: var(--accent); font-weight: 700; }
+.changelog { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+.changelog .card h3 { font-size: 20px; }
 @media (max-width: 860px) {
   .split, .split.rev, .popup-wrap { grid-template-columns: 1fr; }
   .split.rev .media { order: 0; }
   dl.controls { grid-template-columns: 1fr; gap: 2px; } dl.controls dd { margin-bottom: 10px; }
   nav a { margin-left: 12px; }
 }
-@media (max-width: 560px) { nav a.hide-s { display: none; } }
+@media (max-width: 560px) {
+  nav a.hide-s { display: none; }
+  .brand { white-space: nowrap; } nav { white-space: nowrap; } nav a { margin-left: 10px; font-size: 14px; }
+  .pill { font-size: 12px; border-radius: 16px; }
+}

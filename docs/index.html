@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lyrics Translate &amp; Romanize for Amazon Music: Microsoft Edge extension</title>
-<meta name="description" content="A free Microsoft Edge extension that translates the lyrics in the Amazon Music web player and adds romanization for non-Latin scripts. Not affiliated with Amazon.">
+<meta name="description" content="A free Microsoft Edge extension that translates the lyrics in the Amazon Music web player and adds romanization for non-Latin scripts. For songs Amazon has no lyrics for, it can show synced lyrics from LRCLIB. Not affiliated with Amazon.">
 <link rel="icon" href="img/icon.png">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -14,6 +14,7 @@
     <a class="brand" href="#"><img src="img/icon.png" alt="">Lyrics Translate</a>
     <nav>
       <a href="#features">Features</a>
+      <a href="#new" class="hide-s">What's new</a>
       <a href="#popup" class="hide-s">Popup</a>
       <a href="#privacy" class="hide-s">Privacy</a>
       <a href="#install">Install</a>
@@ -24,8 +25,9 @@
 
 <div class="hero">
   <div class="wrap">
+    <a class="pill" href="#lyrics-when-amazon-has-none"><b>New in 1.3</b> Lyrics for songs Amazon doesn't have &rarr;</a>
     <h1>Every lyric in <span>your language</span>,<br>in any script</h1>
-    <p class="lead">Lyrics Translate &amp; Romanize for Amazon Music is a free Microsoft Edge extension. It translates the lyrics in the Amazon Music web player (music.amazon.com) as they scroll, and adds an easy-to-read romanization under lines written in Japanese, Korean, Chinese, Cyrillic, Arabic, Hindi, Thai, Greek, Hebrew and other non-Latin scripts.</p>
+    <p class="lead">Lyrics Translate &amp; Romanize for Amazon Music is a free Microsoft Edge extension. It translates the lyrics in the Amazon Music web player (music.amazon.com) as they scroll, and adds an easy-to-read romanization under lines written in Japanese, Korean, Chinese, Cyrillic, Arabic, Hindi, Thai, Greek, Hebrew and other non-Latin scripts. And when Amazon has no lyrics for a song, it finds synced lyrics on LRCLIB and shows them in the full view, right where Amazon's own lyrics would be.</p>
     <div class="buttons">
       <a class="btn primary" href="https://microsoftedge.microsoft.com/addons/detail/lyrics-translate-romanize-for-amazon-music/jjfhmmdjbkcamelimddcogoopaljflff">Get it on Microsoft Edge Add-ons</a>
       <a class="btn" href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest">Download ZIP (load unpacked)</a>
@@ -41,6 +43,8 @@
     <h2>Features</h2>
     <p class="sub">Everything happens inside the lyrics view you already use. Open a song's lyrics in the Amazon Music web player and the extension does the rest.</p>
     <div class="grid">
+      <div class="card new"><div class="icon">♪</div><span class="tag">New in 1.3</span><h3>Lyrics for songs Amazon doesn't have</h3>
+        <p>No lyrics on Amazon? The extension looks the song up on <a href="https://lrclib.net">LRCLIB</a>, a free, open lyrics database, and shows the lyrics in Amazon's full view, in the same spot and style as Amazon's own, with the current line highlighted as the song plays. Translated and romanized too.</p></div>
       <div class="card"><div class="icon">G</div><h3>Gemini or Google Translate</h3>
         <p>Use the free Google Translate web service with no key or account, or paste your own free Gemini API key for natural translations that use the whole song as context. The key is saved only in your browser.</p></div>
       <div class="card"><div class="icon">⇄</div><h3>Automatic fallback</h3>
@@ -53,28 +57,52 @@
         <p>A small round button in the top-right corner of the player opens the popup as a panel right on the page. Click outside it or press <kbd>Esc</kbd> to close it, or hide the button in the popup.</p></div>
       <div class="card"><div class="icon">⟳</div><h3>Per-song cache</h3>
         <p>Results are saved per song, translator and language: up to 2000 songs (400 lines each). Replays are instant and make no requests. When the cache is full, the least recently played songs are removed first.</p></div>
-      <div class="card"><div class="icon">✓</div><h3>Skips songs already in your language</h3>
-        <p>Lines already in your target language stay as they are. A Latin-script song is language-checked with Google first, so an English song with English selected never uses your Gemini quota, now or on replays.</p></div>
+      <div class="card"><div class="icon">✓</div><span class="tag">Improved in 1.3</span><h3>Smarter language check</h3>
+        <p>Songs already in your language are left alone and never go to Gemini, even if the lyrics contain symbols, emoji or a stray look-alike letter from another alphabet. A mostly English song with a few lines in another language only gets those few lines translated.</p></div>
       <div class="card"><div class="icon">↻</div><h3>"Translate this song"</h3>
         <p>If a mixed-language song was left partly untranslated, one click translates the whole song again with the selected translator and remembers not to skip it next time.</p></div>
       <div class="card"><div class="icon">A+</div><h3>Text size</h3>
         <p>Scale all the lyric text the extension shows from 85% to 145% (Small, Default, Large, Extra large) without zooming the rest of the player, so auto-scrolling keeps working.</p></div>
     </div>
 
-    <div class="split">
+    <div class="split" id="lyrics-when-amazon-has-none">
+      <div class="media"><img src="img/6-lrclib-fullview.png" width="1280" height="720" alt="A full-screen player on a demo page: album art on the left, and on the right synced lyrics from LRCLIB with the current line highlighted in white, each invented Japanese line shown as an English translation with romaji underneath."></div>
+      <div><span class="tag">New in 1.3</span><h3>Lyrics for songs Amazon doesn't have</h3>
+        <p>Some songs have no lyrics on Amazon Music. When that happens, the extension finds <b>synced lyrics</b> on <a href="https://lrclib.net">LRCLIB</a> and shows them in the <b>full view</b>, in the same place and style as Amazon's own lyrics.</p>
+        <ul class="ticks">
+          <li>The current line is highlighted and follows playback, seeks and pauses.</li>
+          <li>Translation and romanization work just like on Amazon's lyrics.</li>
+          <li>The popup's <b>This song</b> line shows the title, artist and where the lyrics came from.</li>
+          <li>Only the song's title, artist and duration are sent to lrclib.net. Turn it off anytime with <b>Find lyrics when Amazon has none</b>.</li>
+        </ul></div>
+    </div>
+    <div class="split rev">
       <div class="media"><img src="img/2-romanization.png" width="1280" height="800" alt="Invented Japanese lyric lines shown with romaji underneath and an English translation, at the Large text size."></div>
       <div><h3>Read along in any script</h3>
         <p>Can't read the script? Follow the romanization line as the song plays. Here three invented Japanese lines keep the original as the main line, with romaji and the English translation underneath, at the <b>Large</b> text size.</p></div>
     </div>
-    <div class="split rev">
+    <div class="split">
       <div class="media"><img src="img/5-original-toggle.png" width="1280" height="800" alt="Invented Chinese, Greek, Hebrew and Thai lines with the original shown as the main line and romanization plus translation underneath."></div>
       <div><h3>Original lyrics, when you want them</h3>
         <p>With <b>Original lyrics</b> on, the original stays the big line. Songs that mix scripts are handled line by line: each line gets its own romanization and translation, and lines already in your language are left alone.</p></div>
     </div>
-    <div class="split">
+    <div class="split rev">
       <div class="media"><img src="img/4-floating-panel.png" width="1280" height="800" alt="The floating button in the top-right corner has opened the settings panel on the page, next to translated demo lyrics."></div>
       <div><h3>Settings without leaving the player</h3>
         <p>The floating button opens the full popup as an in-page panel, handy in full-screen or when the toolbar is hidden. It's the same popup, with the same live status lines.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="new">
+  <div class="wrap">
+    <h2>What's new</h2>
+    <p class="sub">Recent versions, newest first. Full history and downloads in the <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases">releases</a>.</p>
+    <div class="changelog">
+      <div class="card"><h3>1.3.3</h3><p>Smarter language check: songs already in your language never go to Gemini, even with look-alike characters, and mostly English songs only get their few foreign lines translated.</p></div>
+      <div class="card"><h3>1.3.2</h3><p>Lyrics from LRCLIB now appear in Amazon's full view, in the same spot and style as Amazon's own lyrics, with the current line highlighted.</p></div>
+      <div class="card"><h3>1.3.1</h3><p>More reliable detection of songs Amazon has no lyrics for, using the player bar's "Lyrics available" badge.</p></div>
+      <div class="card"><h3>1.3.0</h3><p>New: synced lyrics from LRCLIB for songs Amazon has no lyrics for, translated and romanized, following playback, seeks and pauses. Popup toggle <b>Find lyrics when Amazon has none</b> (on by default).</p></div>
     </div>
   </div>
 </section>
@@ -84,15 +112,15 @@
     <h2>The popup</h2>
     <p class="sub">Click the toolbar icon (or the floating button). Changes apply immediately to the open lyrics.</p>
     <div class="popup-wrap">
-      <div class="popup-img"><img src="img/popup.png" width="604" height="1000" alt="The extension popup: target language, translator, Gemini status, this song's status, Translate this song button, text size, toggles and the saved-songs counter."></div>
+      <div class="popup-img"><img src="img/popup.png" width="608" height="1124" alt="The extension popup: target language, translator, Gemini status, this song's title, artist and status, a note that the lyrics were added from LRCLIB, the Translate this song button, text size, toggles including Find lyrics when Amazon has none, and the saved-songs counter."></div>
       <dl class="controls">
         <dt>Translate to</dt><dd>Target language: 23 languages, including English, Spanish, French, German, Japanese, Korean, Chinese (Simplified and Traditional), Arabic, Hindi and more.</dd>
         <dt>Translator</dt><dd><b>Gemini (needs key)</b> or <b>Google Translate</b>. Gemini is picked automatically once you save a key.</dd>
         <dt>Gemini status dot</dt><dd><span class="dot g"></span>Gemini working, last reply 2 min ago · <span class="dot a"></span>Using Google (quota hit, timed out, error or unexpected reply) · <span class="dot r"></span>Invalid key · <span class="dot n"></span>No key, not used yet, or Google selected.</dd>
-        <dt>This song</dt><dd>The current song's detected language(s) and state, for example "Japanese + English · Translated with Gemini (from cache)", "English · Already in English, no translation needed" or "Translating…".</dd>
+        <dt>This song</dt><dd>The current song's title and artist, its detected language(s) and state, for example "Japanese + English · Translated with Gemini (from cache)", "English · Already in English, no translation needed" or "Translating…". For songs Amazon has no lyrics for, a second line says where the lyrics came from: "Lyrics added from LRCLIB (synced)", or "Amazon has no lyrics; none found on LRCLIB".</dd>
         <dt>Translate this song</dt><dd>Translates the open song again with the selected translator and stops it being skipped.</dd>
         <dt>Text size</dt><dd>Small (85%), Default, Large (120%) or Extra large (145%).</dd>
-        <dt>Toggles</dt><dd>Show romanization, Show translation, Show original lyrics, Show floating button, Find lyrics when Amazon has none.</dd>
+        <dt>Toggles</dt><dd>Show romanization, Show translation, Show original lyrics, Show floating button, and <b>Find lyrics when Amazon has none</b> (on by default; turn it off and nothing is ever sent to LRCLIB).</dd>
         <dt>Saved songs</dt><dd>For example "Saved songs: 12 (Gemini 8 · Google 6) · ~0.3 MB": how many songs are cached, how many are fully translated by each translator, and roughly how much storage is used.</dd>
         <dt>Settings</dt><dd>Opens the settings page, where you save, test or remove your Gemini key.</dd>
       </dl>
@@ -115,10 +143,11 @@
 <section id="privacy">
   <div class="wrap">
     <h2>Privacy</h2>
-    <div class="grid">
+    <div class="grid four">
       <div class="card"><h3>No data collection</h3><p>The developer collects nothing. There are no analytics, no trackers, no accounts and no servers of our own.</p></div>
-      <div class="card"><h3>What is sent, and where</h3><p>Only the lyric lines on screen are sent to Google Translate, and to Google Gemini if you added your own key, only to translate or romanize them. For songs Amazon has no lyrics for, the title, artist and duration are sent to LRCLIB (lrclib.net) to find lyrics. No cookies, song history or other data.</p></div>
-      <div class="card"><h3>Stored in your browser</h3><p>Your Gemini key and the translation cache stay in local extension storage; your settings are in sync storage. Removing the extension clears them.</p></div>
+      <div class="card"><h3>What is sent, and where</h3><p>Only the lyric lines on screen are sent to Google Translate, and to Google Gemini if you added your own key, only to translate or romanize them. No cookies, song history or other data.</p></div>
+      <div class="card"><h3>LRCLIB, only when needed</h3><p>Only for songs Amazon has no lyrics for, the song's title, artist and duration are sent to <a href="https://lrclib.net">lrclib.net</a> to find lyrics. No personal data, no account. Switch it off with <b>Find lyrics when Amazon has none</b>.</p></div>
+      <div class="card"><h3>Stored in your browser</h3><p>Your Gemini key, the translation cache and the LRCLIB lyrics cache stay in local extension storage; your settings are in sync storage. Removing the extension clears them.</p></div>
     </div>
     <p style="margin-top:20px"><a href="privacy.html">Read the full privacy policy</a></p>
   </div>
@@ -131,10 +160,10 @@
       <div class="card"><h3>From Microsoft Edge Add-ons</h3>
         <p>The easiest way: install it from the official store with one click, and Edge keeps it updated automatically.</p>
         <p style="margin-top:14px"><a class="btn primary" href="https://microsoftedge.microsoft.com/addons/detail/lyrics-translate-romanize-for-amazon-music/jjfhmmdjbkcamelimddcogoopaljflff">Get it on Microsoft Edge Add-ons</a></p></div>
-      <div class="card"><h3>Load unpacked (alternative)</h3>
+      <div class="card"><h3>Load unpacked (Chrome and other browsers)</h3>
         <ol class="steps">
           <li>Download the ZIP from the <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest">latest release</a> and unzip it (or clone the repo and use its <code>extension</code> folder).</li>
-          <li>Open <code>edge://extensions</code>.</li>
+          <li>Open <code>edge://extensions</code> (in Chrome: <code>chrome://extensions</code>).</li>
           <li>Turn on <b>Developer mode</b>.</li>
           <li>Click <b>Load unpacked</b> and pick the folder that contains <code>manifest.json</code>.</li>
           <li>Open <a href="https://music.amazon.com">music.amazon.com</a>, play a song and open the lyrics view.</li>
@@ -146,7 +175,7 @@
 
 <section>
   <div class="wrap">
-    <p class="disclaimer"><b>Not affiliated with Amazon.</b> This is an independent, unofficial extension. It is not made, endorsed or supported by Amazon. Amazon Music is a trademark of Amazon.com, Inc. or its affiliates. Google Translate and Gemini are trademarks of Google LLC.</p>
+    <p class="disclaimer"><b>Not affiliated with Amazon.</b> This is an independent, unofficial extension. It is not made, endorsed or supported by Amazon. Amazon Music is a trademark of Amazon.com, Inc. or its affiliates. Google Translate and Gemini are trademarks of Google LLC. Lyrics for songs Amazon has none for come from LRCLIB, an independent community project.</p>
   </div>
 </section>
 

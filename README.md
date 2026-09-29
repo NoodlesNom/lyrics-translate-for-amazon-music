@@ -1,6 +1,6 @@
 # Lyrics Translate & Romanize for Amazon Music
 
-A free Microsoft Edge extension (Manifest V3, plain JS/HTML/CSS) that translates the lyrics in the Amazon Music web player ([music.amazon.com](https://music.amazon.com)) and adds romanization for non-Latin scripts.
+A free Microsoft Edge extension (Manifest V3, plain JS/HTML/CSS) that translates the lyrics in the Amazon Music web player ([music.amazon.com](https://music.amazon.com)) and adds romanization for non-Latin scripts. When Amazon has no lyrics for a song, it finds synced lyrics on [LRCLIB](https://lrclib.net) and shows them in Amazon's full view.
 
 > **Not affiliated with Amazon.** This is an independent, unofficial extension. It is not made, endorsed or supported by Amazon. Amazon Music is a trademark of Amazon.com, Inc. or its affiliates.
 
@@ -21,16 +21,30 @@ A free Microsoft Edge extension (Manifest V3, plain JS/HTML/CSS) that translates
 - **Skips songs already in your language**, so an English song with English selected never uses your Gemini quota. Since 1.3.3 this also holds when the lyrics contain symbols or a stray look-alike letter (e.g. a Cyrillic "е" typed into an English word), and a mostly English song with a few lines in another script (e.g. a Japanese phrase) only sends those lines to the translator.
 - **Lyrics when Amazon has none (new in 1.3.0):** if Amazon Music has no lyrics for the current song (no "LYRICS" badge next to the title in the player bar, and an empty lyrics area in the full view), they're looked up on [LRCLIB](https://lrclib.net) (free, open lyrics database) and shown in Amazon's full view, right where Amazon's own lyrics would appear and styled like them (since 1.3.2), with the current line highlighted in sync with playback, translated and romanized like Amazon's own lyrics. The popup shows "Lyrics added from LRCLIB (synced/unsynced)" (with "· open the full view to see them" while it's closed) or "Amazon has no lyrics; none found on LRCLIB". Only close matches (same title and artist, duration within 3 s) are used. Toggle: **Find lyrics when Amazon has none** (on by default).
 
+![Synced lyrics from LRCLIB in the full view of a demo page, with invented lines](docs/img/6-lrclib-fullview.png)
+
 ## Install
 
 - **Microsoft Edge Add-ons (recommended):** [install from the store](https://microsoftedge.microsoft.com/addons/detail/lyrics-translate-romanize-for-amazon-music/jjfhmmdjbkcamelimddcogoopaljflff).
-- **Load unpacked:** download the ZIP from the [latest release](https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest) (or clone this repo), open `edge://extensions`, turn on **Developer mode**, click **Load unpacked** and select the folder that contains `manifest.json` (the [`extension`](extension) folder in this repo).
+- **Load unpacked:** download the ZIP from the [latest release](https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest) (or clone this repo), open `edge://extensions`, turn on **Developer mode**, click **Load unpacked** and select the folder that contains `manifest.json` (the [`extension`](extension) folder in this repo). The same works in Chrome and other Chromium browsers at `chrome://extensions`.
 
 Full usage notes, the Gemini setup and known limits are in [extension/README.md](extension/README.md).
 
 ## Privacy
 
-The developer collects no data and there are no analytics. The lyric lines on screen are sent to Google Translate, and to Google Gemini if you added your own key, only to translate or romanize them. For songs Amazon has no lyrics for, the song's **title, artist and duration are sent to LRCLIB (lrclib.net)** to find lyrics (turn this off with **Find lyrics when Amazon has none**). The key is stored only in `chrome.storage.local`, settings in `chrome.storage.sync` and the cache in `chrome.storage.local`; removing the extension clears them. See [PRIVACY.md](PRIVACY.md).
+The developer collects no data and there are no analytics. The lyric lines on screen are sent to Google Translate, and to Google Gemini if you added your own key, only to translate or romanize them. For songs Amazon has no lyrics for, the song's **title, artist and duration are sent to LRCLIB (lrclib.net)** to find lyrics; nothing else, no personal data, no cookies (turn this off with **Find lyrics when Amazon has none**). The key is stored only in `chrome.storage.local`, settings in `chrome.storage.sync` and the translation and LRCLIB caches in `chrome.storage.local`; removing the extension clears them. See [PRIVACY.md](PRIVACY.md).
+
+## Changelog
+
+Newest first.
+
+- **1.3.3:** smarter language check. Songs already in your language never go to Gemini, even with symbols, emoji or a look-alike letter from another alphabet; a mostly English song with a few foreign lines only gets those lines translated. The popup says e.g. "Mostly English · translated 2 lines with Gemini".
+- **1.3.2:** LRCLIB lyrics are shown in Amazon's full view, in the spot and style of Amazon's own lyrics (white current line, dim other lines), with a small "Lyrics from LRCLIB" credit.
+- **1.3.1:** reliable detection of songs without Amazon lyrics (the player bar's "Lyrics available" badge) and the song's title/artist in the popup's "This song" line.
+- **1.3.0:** synced lyrics from [LRCLIB](https://lrclib.net) for songs Amazon has no lyrics for, following playback, seeks and pauses, translated and romanized. New toggle **Find lyrics when Amazon has none** (on by default); only new permission `https://lrclib.net/*`.
+- **1.2.4:** first release: translation and romanization with Google Translate or your own Gemini key, per-song cache, floating button.
+
+Downloads: [GitHub releases](https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases).
 
 ## Permissions
 
