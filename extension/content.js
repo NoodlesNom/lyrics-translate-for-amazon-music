@@ -227,7 +227,12 @@
   // Clicks inside the iframe don't reach this document, so any click here outside the button closes the panel.
   document.addEventListener('click', (e) => { if (panel && !(floatBtn && floatBtn.contains(e.target))) closePanel(); }, true);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); }, true);
-  window.addEventListener('message', (e) => { if (panel && e.source === panel.contentWindow && e.data === 'amlt-close') closePanel(); }); // Esc inside the panel
+  // From the panel: Esc pressed inside it, or its content height (the panel fits it; CSS caps it to the window).
+  window.addEventListener('message', (e) => {
+    if (!panel || e.source !== panel.contentWindow) return;
+    if (e.data === 'amlt-close') closePanel();
+    else if (e.data && e.data.amlt === 'height' && Number.isFinite(e.data.h)) panel.style.height = Math.min(Math.max(Math.round(e.data.h), 120), 800) + 'px';
+  });
 
   // ===================== Amazon's full view: keep the current line on screen =====================
   // Amazon's lyrics scroller (Stage_OverlaysContainer > scroller > list > one row per line > h4) scrolls by ITS row

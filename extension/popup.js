@@ -43,11 +43,21 @@ async function findSong() {
   $('force').disabled = busy || !tabId;
   const name = song && song.title ? song.title + (song.artist ? ' by ' + song.artist : '') : '';
   const detail = tabId ? await describe(song) : '';
-  $('song').textContent = 'This song: ' + ([name, detail].filter(Boolean).join(' · ') || 'nothing playing in Amazon Music.');
+  showSong(name, detail);
   const kind = noteKind(song);
   $('lrcNote').hidden = !kind;
   $('lrcNote').textContent = NOTES[kind] || '';
   $('lrcNote').dataset.kind = kind;
+}
+// "This song: <title> by <artist>" (at most 2 lines, full text in the tooltip), then the language/translation state on its
+// own line. The element's text stays "This song: <title> by <artist> · <state>" (the separator is only hidden visually).
+function showSong(name, detail) {
+  const el = $('song'), text = 'This song: ' + ([name, detail].filter(Boolean).join(' · ') || 'nothing playing in Amazon Music.');
+  if (el.textContent === text) return;
+  el.title = name ? text : '';
+  if (!name) { el.textContent = text; return; }
+  const span = (className, textContent) => Object.assign(document.createElement('span'), { className, textContent });
+  el.replaceChildren(span('t', 'This song: ' + name), ...(detail ? [span('sep', ' · '), span('d', detail)] : []));
 }
 // Where this song's lyrics come from (see lyricsState() and lrcStatus() in content.js). Hidden while Amazon's own lines are shown.
 const NOTES = {
@@ -114,6 +124,7 @@ $('force').addEventListener('click', async () => {
 // for them), and then nothing of this is shown.
 const UPD_ERR = { offline: "Couldn't reach GitHub. Check your connection and try again.", ratelimit: 'GitHub is limiting requests right now. Try again later.',
   http: "Couldn't read the latest version from GitHub.", none: 'No releases published yet.' };
+$('updCur').textContent = 'v' + chrome.runtime.getManifest().version;
 $('updPage').textContent = /\bEdg\//.test(navigator.userAgent) ? 'edge://extensions' : 'chrome://extensions';
 function showUpdate(u, msg) {
   const on = !!u && u.store === false;
@@ -166,5 +177,11 @@ $('tl').addEventListener('change', (e) => { chrome.storage.sync.set({ tl: e.targ
 $('translator').addEventListener('change', (e) => { chrome.storage.sync.set({ translator: e.target.value }); refresh(); });
 $('size').addEventListener('change', (e) => chrome.storage.sync.set({ size: Number(e.target.value) }));
 for (const k of TOGGLES) $(k).addEventListener('change', (e) => chrome.storage.sync.set({ [k]: e.target.checked }));
-if (window.top !== window) addEventListener('keydown', (e) => { if (e.key === 'Escape') parent.postMessage('amlt-close', 'https://music.amazon.com'); });
+// In the page's floating panel (iframe): Esc closes it, and the panel is sized to fit the content (content.js caps it to
+// the window; below that cap only #main scrolls).
+if (window.top !== window) {
+  document.documentElement.classList.add('in-panel');
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') parent.postMessage('amlt-close', 'https://music.amazon.com'); });
+  new ResizeObserver(() => parent.postMessage({ amlt: 'height', h: Math.ceil(document.querySelector('.top').offsetHeight + $('main').scrollHeight) }, 'https://music.amazon.com')).observe($('content'));
+}
 $('settings').addEventListener('click', (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });

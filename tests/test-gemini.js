@@ -103,7 +103,7 @@ const waitTrans = (page, text) => page.waitForFunction((t) => [...document.query
     && !('geminiKey' in (await sw.evaluate(() => chrome.storage.sync.get(null)))));
   check('options: saved key shown masked (last 4 only), input cleared', savedText === 'Saved key: ••••••••' + FAKE_KEY.slice(-4) && !savedText.includes(FAKE_KEY) && (await opt.inputValue('#key')) === '', savedText);
   pop = await ctx.newPage();
-  await pop.setViewportSize({ width: 302, height: 450 });
+  await pop.setViewportSize({ width: 320, height: 450 });
   await pop.goto(`chrome-extension://${extId}/popup.html`);
   check('indicator: key saved, Gemini not called yet → gray "Not used yet"', ...await ind('Not used yet', 'gray'));
   check('counter: empty cache → "Saved songs: 0 (Gemini 0 · Google 0)"', ...await counter('Saved songs: 0 (Gemini 0 · Google 0) · ~'));

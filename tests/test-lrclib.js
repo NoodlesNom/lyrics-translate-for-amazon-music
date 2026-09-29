@@ -380,7 +380,7 @@ const near = (a, b, tol = 12) => Math.abs(a - b) <= tol;
 
   // ---------- 8. Popup: toggle + "This song" notices ----------
   const pop = await ctx.newPage();
-  await pop.setViewportSize({ width: 302, height: 560 });
+  await pop.setViewportSize({ width: 320, height: 560 });
   await pop.goto(`chrome-extension://${extId}/popup.html`);
   await pop.waitForTimeout(400);
   const tabId = await sw.evaluate(async () => { for (const t of await chrome.tabs.query({})) if (await chrome.tabs.sendMessage(t.id, { type: 'song' }).catch(() => null)) return t.id; });

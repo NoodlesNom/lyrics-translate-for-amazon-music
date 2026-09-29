@@ -72,7 +72,7 @@ const waitGh = async (n, t = 10000) => { const t0 = Date.now(); while (gh.length
   check('unpacked: badge color is the subtle blue #1a6fd1', JSON.stringify(bg) === JSON.stringify([26, 111, 209, 255]), JSON.stringify(bg));
 
   const pop = await ctx.newPage();
-  await pop.setViewportSize({ width: 302, height: 640 });
+  await pop.setViewportSize({ width: 320, height: 640 });
   await pop.goto(`chrome-extension://${extId}/popup.html`);
   await pop.waitForTimeout(700);
   let P = await popState(pop);

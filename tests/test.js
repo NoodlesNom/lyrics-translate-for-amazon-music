@@ -294,7 +294,7 @@ const isLatin = (s) => !/[^\P{L}\p{Script=Latin}]/u.test(s);
   // 10. Popup screenshot
   await page.close();                                                    // so the popup's language change doesn't trigger page requests
   const pop = await ctx.newPage();
-  await pop.setViewportSize({ width: 302, height: 450 });
+  await pop.setViewportSize({ width: 320, height: 450 });
   await pop.goto(`chrome-extension://${extId}/popup.html`);
   await pop.waitForTimeout(500);
   check('popup reflects stored settings (orig default off)', (await pop.$eval('#tl', (e) => e.value)) === 'en' && (await pop.$eval('#rom', (e) => e.checked)) && !(await pop.$eval('#orig', (e) => e.checked)));
