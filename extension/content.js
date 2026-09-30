@@ -634,9 +634,46 @@
     stage.scroll.scrollTo({ top: el.offsetTop - stage.scroll.clientHeight / 2 + el.offsetHeight / 2, behavior: stage.jumped ? 'smooth' : 'auto' });
     stage.jumped = true;
   }
+  function lyricCover(st, sc) {
+    const usable = (el) => {
+      if (!el || !el.isConnected) return null;
+      if (el.style && el.style.display === 'none') return null;
+      const r = el.getBoundingClientRect();
+      if (r.width < 160 || r.height < 120 || r.bottom <= r.top) return null;
+      return r;
+    };
+    const col = usable(st && st.box);
+    const scr = usable(sc);
+    if (scr && col) {
+      const overlapW = Math.min(scr.right, col.right) - Math.max(scr.left, col.left);
+      const overlap = overlapW > Math.min(scr.width, col.width) * 0.5;
+      if (!overlap) return scr;
+      // A wide parent testid would paint across the art. Keep the scroller's left/right (where
+      // the lines actually are) but take whichever bottom is lower so we match the column.
+      if (col.width > scr.width + 80) {
+        const top = Math.min(scr.top, col.top);
+        const bottom = Math.max(scr.bottom, col.bottom);
+        return { left: scr.left, top, width: scr.width, height: bottom - top };
+      }
+      const left = Math.min(scr.left, col.left);
+      const top = Math.min(scr.top, col.top);
+      const right = Math.max(scr.right, col.right);
+      const bottom = Math.max(scr.bottom, col.bottom);
+      return { left, top, width: right - left, height: bottom - top };
+    }
+    return scr || col;
+  }
   function placeStage(stage, st) {
     if (!stage || !st) return;
-    const b = stageBox(st);
+    let b = null;
+    if (stage === az) {
+      const live = lyricCover(st, azSc);
+      if (live && live.width >= 160 && live.height >= 120) {
+        b = { left: Math.round(live.left), top: Math.round(live.top), width: Math.round(live.width), height: Math.round(live.height) };
+        stage.cover = b;
+      } else if (stage.cover) b = stage.cover; // scroller display:none collapses the column for a moment
+    }
+    if (!b) b = stageBox(st);
     const sig = [b.left, b.top, b.width, b.height].join();
     if (sig === stage.box) return;
     stage.box = sig;
@@ -668,8 +705,25 @@
     if (sc && sc.style.display !== 'none') sc.style.setProperty('display', 'none', 'important');
   }
   function lyricsScroller(lines) {
-    if (azSc && azSc.isConnected && lines[0] && azSc.contains(lines[0])) return azSc;
-    return (lines[0] && scrollerOf(lines[0])) || (lines[0] && lines[0].closest(STAGE_LYRICS));
+    const shown = lines.filter((el) => el.getClientRects().length);
+    const pool = shown.length ? shown : lines;
+    const seen = new Set();
+    const groups = [];
+    for (const el of pool) {
+      const sc = scrollerOf(el) || el.closest(STAGE_LYRICS);
+      if (!sc || seen.has(sc)) continue;
+      seen.add(sc);
+      groups.push(sc);
+    }
+    // A scroller we hid (display:none) still holds the previous song. Prefer a visible list
+    // whose lines are not that song, including when previous-track left the old node mounted.
+    const track = playingTrack();
+    if (azPrev && track && track !== azPrev.track) {
+      const fresh = groups.find((sc) => !sameSong(azPrev.texts, linesIn(sc).map(lineText)));
+      if (fresh) return fresh;
+    }
+    if (azSc && azSc.isConnected && azSc.style.display !== 'none' && groups.includes(azSc)) return azSc;
+    return groups[0] || null;
   }
   function linesIn(sc) {
     if (!sc) return [];
@@ -700,10 +754,22 @@
     return collected.concat(win);
   }
   function sameSong(collected, win) {
-    if (!win.length) return true;
+    if (!win.length) return true; // rows unmounted for a moment: not a new song
+    if (!collected.length) return false;
     if (sliceStart(collected, win) >= 0 || win.join('\n') === collected.join('\n')) return true;
+    // A virtualized window of this song shares most of its lines. One shared "♪" must not,
+    // or the previous song's stage stays up when the next track reuses the same scroller.
     const have = new Set(collected);
-    return win.some((t) => have.has(t));
+    let hit = 0;
+    for (const t of win) if (t && have.has(t)) hit++;
+    return hit >= 3 && hit / win.length >= 0.6;
+  }
+  // Playing track, so previous and next both drop the stage. Lyric text alone is not enough:
+  // going back reuses Amazon's scroller, and the old window can still overlap the new one.
+  function playingTrack() {
+    const p = dead ? null : player();
+    if (!p || !p.title) return '';
+    return p.id + '\u0001' + p.title;
   }
   function stageLines(texts) {
     const els = texts.map((text) => {
@@ -736,6 +802,12 @@
     el.classList.add('amlt-stage-on');
     scrollStageLine(az, el);
   }
+  // Gap between lines: nothing is current, so nothing stays lit and we do not scroll.
+  function clearActive() {
+    if (!az || az.active < 0) return;
+    if (az.els[az.active]) az.els[az.active].classList.remove('amlt-stage-on');
+    az.active = -1;
+  }
   // White h4 -> index in the lines we are showing. -1 if there is no white h4.
   function indexFromWhite(sc, texts) {
     if (!sc) return -1;
@@ -754,6 +826,7 @@
     azHarvest.done = true;
     azHarvest = null;
   }
+  let azPrev = null; // { texts } of the stage we just dropped because the track changed
   function dropAmazonStage(restore) {
     clearInterval(azTimer);
     azTimer = 0;
@@ -764,13 +837,18 @@
       az.root.remove();
       az = null;
     }
-    if (restore && azSc && azSc.isConnected) azSc.style.removeProperty('display');
+    if (restore && azSc && azSc.isConnected) {
+      azSc.style.removeProperty('display');
+      azSc.style.removeProperty('opacity');
+    }
     if (restore) azSc = null;
   }
   function hideAmazonStage() { dropAmazonStage(true); }
-  function coverColor() {
-    const bg = getComputedStyle(document.body).backgroundColor;
-    return bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)' ? bg : '#000';
+  // Hide Amazon's rows without painting a dark panel over them. Opacity keeps layout, so the
+  // sweep can still scroll and read the white h4. A solid background was a dark rectangle that
+  // didn't match the column and cut their lines off mid-word.
+  function veilScroller(sc) {
+    if (sc && sc.style.opacity !== '0') sc.style.setProperty('opacity', '0', 'important');
   }
   function watchAzScroller(sc) {
     if (!az || az.mo) return;
@@ -823,6 +901,8 @@
     const texts = h.texts.length ? h.texts.slice() : prev;
     refillStage(texts);
     let idx = sc && sc.isConnected && sc.style.display !== 'none' ? indexFromWhite(sc, az.texts) : -1;
+    // The sweep can leave a later row white. Don't center that line and then snap back.
+    if (prevActive >= 0 && idx >= 0 && Math.abs(idx - prevActive) > 2) idx = -1;
     if (idx < 0 && prevActive >= 0) {
       const start = sliceStart(az.texts, prev);
       if (start >= 0) idx = start + prevActive;
@@ -939,17 +1019,36 @@
     if (!az || !azSc) return;
     const lines = linesIn(azSc);
     const i = lines.length ? indexFromWhite(azSc, az.texts) : -1;
-    if (i >= 0) noteAmazonPace(i);
-    // While the sweep is still mounting rows, only trust a white h4 that belongs to the list on screen.
-    // Do not invent a line from the clock yet: a missing white row before the hide means "not current", not line 0.
-    if (!az.done && (!lines.length || lines.map(lineText).join('\n') !== az.sig)) return;
-    if (i >= 0) { applyActive(i); return; }
-    if (!az.done) return;
+    // While the sweep scrolls Amazon's list, a later row can flash white. Following it centers
+    // the wrong line, then the real current line comes back. Hold the line we already have.
+    if (!az.done) {
+      if (az.active >= 0) return;
+      if (i >= 0 && lines.map(lineText).join('\n') === az.sig) applyActive(i);
+      return;
+    }
+    if (i >= 0) {
+      // A seek jumps the white row. Drop the pace so the clock can't keep projecting the old one.
+      if (az.active >= 0 && Math.abs(i - az.active) > 2) { az.pace = []; az.perLine = 0; az.paceAt = null; }
+      else noteAmazonPace(i);
+      az.whiteIdx = i;
+      az.whiteAt = Date.now();
+      applyActive(i);
+      return;
+    }
+    // No white row while lines are still mounted: Amazon is between lines, so nothing is current.
+    // Clear the highlight. Do not keep the previous line lit, and do not center a later one.
+    if (lines.length) { clearActive(); return; }
     const j = indexFromClock();
     if (j >= 0) applyActive(j);
   }
   function tickAmazon() {
     if (!az || dead) return;
+    const track = playingTrack();
+    if (track && az.track && track !== az.track) {
+      azPrev = { track: az.track, texts: az.texts.slice() };
+      hideAmazonStage();
+      return schedule(0);
+    }
     const lines = findLines();
     const st = amazonInView(lines);
     if (!st) { hideAmazonStage(); return schedule(0); }
@@ -962,7 +1061,7 @@
       if (!az.done) beginHarvest(sc);
     }
     if (az.done) concealScroller(azSc);
-    else az.root.style.backgroundColor = coverColor();
+    else { az.root.style.backgroundColor = ''; veilScroller(azSc); }
     placeStage(az, st);
     az.root.classList.toggle('amlt-stage-covered', coveredStage(az, st));
     const win = linesIn(azSc).map(lineText);
@@ -973,27 +1072,41 @@
     const st = amazonInView(lines);
     if (!st) { hideAmazonStage(); return false; }
     unwatchAmazon(); // do not fight Amazon's scroll with keepCheck while our list is up
+    const track = playingTrack();
+    if (az && track && az.track && track !== az.track) {
+      azPrev = { track: az.track, texts: az.texts.slice() };
+      hideAmazonStage();
+    }
     const sc = lyricsScroller(lines);
     if (!sc) { hideAmazonStage(); return false; }
-    for (const el of lines) {
+    const scoped = linesIn(sc);
+    const win = scoped.map(lineText);
+    // Previous-track reuses the scroller, so the rows can still be the song we just left.
+    // Adopting them keys the stage to that song until playback passes it again.
+    if (!az && azPrev && track && track !== azPrev.track && win.length && sameSong(azPrev.texts, win)) {
+      schedule(200);
+      return false;
+    }
+    for (const el of scoped) {
       const b = ownBlock(el);
       if (b) { blocks.delete(b); b.remove(); }
       marks.delete(el);
     }
-    const win = lines.map(lineText);
     if (az && az.root.isConnected && (sc !== azSc || (az.done && !sameSong(az.texts, win)))) hideAmazonStage();
     if (!az) {
       azSc = sc;
       az = createStage({ aria: 'Lyrics', credit: '', plain: false, pad: true, specs: win.map((text) => ({ text, roman: false })) });
       az.sig = win.join('\n');
       az.texts = win.slice();
+      az.track = track;
       az.done = false;
+      azPrev = null;
       document.body.appendChild(az.root);
       watchAzScroller(sc);
       if (!azTimer) azTimer = setInterval(tickAmazon, 200);
       beginHarvest(sc);
     }
-    if (!az.done) az.root.style.backgroundColor = coverColor();
+    if (!az.done) { az.root.style.backgroundColor = ''; veilScroller(sc); }
     else concealScroller(sc);
     placeStage(az, st);
     markAmazon();
@@ -1048,10 +1161,13 @@
     const right = box && box.right > artRight + 160 && box.right <= W ? box.right
       : col && col.right > artRight + 160 && col.right <= W ? col.right - 32 : W - 84;
     const top = box && box.top >= 0 && box.top < H / 2 ? box.top : art ? art.top + 32 : Math.round(H * 0.15);
-    let bottom = art ? art.bottom - 22 : box && box.height > 100 ? box.bottom : Math.round(H * 0.7);
+    // Prefer the lyrics column's own bottom when it is actually open (a real width). art.bottom
+  // stops our list short of Amazon's, so their rows show underneath and fewer of our lines fit.
+  // The empty 0-wide placeholder (LRCLIB) keeps the art-based bottom the spot was measured with.
+  let bottom = box && box.width >= 160 && box.height > 160 ? box.bottom : art ? art.bottom - 22 : Math.round(H * 0.7);
     const room = right - (artRight + 48);
-    const width = Math.min(room, Math.max(320, Math.round((right - artRight) * 0.684)));
-    const left = right - width;
+    const width = box && box.width >= 160 ? box.width : Math.min(room, Math.max(320, Math.round((right - artRight) * 0.684)));
+    const left = box && box.width >= 160 ? box.left : right - width;
     const obstacles = [STAGE_TITLE, STAGE_SUBTITLE, MINI, STAGE_MINIMIZE, '.amlt-float'].flatMap((s) => [...document.querySelectorAll(s)]);
     for (const el of obstacles) {
       const r = el.getBoundingClientRect();
@@ -1063,10 +1179,17 @@
   function placeLrc(st) { placeStage(lrc, st); }
   // Hidden while something else of Amazon's (a menu, the queue) is drawn over the spot: the topmost page element at the
   // box's center must belong to the full view (or be one of its ancestors).
+  // Our popup must not count. The in-page panel sits above the lyrics (higher z-index, on the right) so it is the
+  // element at the center the whole time it is open, and visibility:hidden on .amlt-stage-covered cleared every lyric
+  // until the panel closed. The toolbar popup steals document focus the same way: don't treat a blur as a cover.
   function coveredStage(stage, st) {
     const r = stage.root.getBoundingClientRect();
-    if (!r.width || !r.height || !document.elementsFromPoint) return false;
-    const top = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2).find((e) => !stage.root.contains(e));
+    if (!r.width || !r.height || !document.elementsFromPoint || !document.hasFocus()) return false;
+    const top = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2).find((e) => {
+      if (stage.root.contains(e)) return false;
+      if (e.closest && e.closest('.amlt-panel, .amlt-float, .amlt')) return false;
+      return true;
+    });
     const anchorEl = st.box || st.art;
     const stageRoot = (anchorEl && anchorEl.closest('section[role="region"]')) || (st.art && st.box && common(st.art, st.box));
     return !!(top && stageRoot && !stageRoot.contains(top) && !top.contains(stageRoot));

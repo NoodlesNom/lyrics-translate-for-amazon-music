@@ -62,13 +62,14 @@
 }
 
 /* Full-view lyric list (.amlt-stage): LRCLIB when Amazon has none, and Amazon's own lines (their column
-   covered, then their scroller display:none once the sweep has read every mounted line) when it has them. content.js positions this fixed box over Amazon's lyrics column, right of the art. Styled like
+   covered — their scroller is opacity:0 during the sweep, then display:none — never a solid dark panel,
+   which flashed over the left of the column and cut lines off) when it has them. content.js positions this fixed box over Amazon's lyrics column, right of the art. Styled like
    Amazon's lyric lines: EmberModernDisplayStd-Bold 24px, right-aligned, dim lines and a white current line, ~72px per
    line, no panel chrome. Lines holding an .amlt block get the shared size/translation rules above. */
 .amlt-stage {
   position: fixed; left: 0; top: 0; width: 0; height: 0; z-index: 2147482990;
   display: flex; flex-direction: column; box-sizing: border-box; margin: 0; padding: 0;
-  background: none; border: 0; box-shadow: none; color: #fff; text-align: right;
+  background: none !important; border: 0; box-shadow: none; color: #fff; text-align: right;
 }
 .amlt-stage.amlt-stage-off, .amlt-stage.amlt-stage-covered { visibility: hidden; }
 .amlt-stage-scroll {
