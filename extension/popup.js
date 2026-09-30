@@ -23,6 +23,7 @@ async function render() {
   else { state = 'amber'; label = `Using Google (${FALLBACK[st.code] || 'error'})`; }
   $('gstate').dataset.state = state;
   $('glabel').textContent = label;
+  $('setkey').hidden = $('translator').value === 'google' || !!all.geminiKey;
 
   // Per translator = songs whose every cached line has a translation from it in the selected language.
   const tl = $('tl').value;
@@ -207,3 +208,4 @@ if (window.top !== window) {
   new ResizeObserver(() => parent.postMessage({ amlt: 'height', h: Math.ceil(document.querySelector('.top').offsetHeight + $('main').scrollHeight) }, parentOrigin)).observe($('content'));
 }
 $('settings').addEventListener('click', (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });
+$('setkey').addEventListener('click', (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });

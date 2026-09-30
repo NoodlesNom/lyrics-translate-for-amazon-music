@@ -35,6 +35,7 @@
   #force:not(:disabled):hover { border-color: #50575a; }
   #force:disabled { opacity: .45; cursor: default; }
   #forceMsg:empty { display: none; }
+  #setkey { margin-left: 6px; }
   .note { color: #25d1da; } .note[data-kind=none], .note[data-kind=error] { color: #ffb300; }
   .note[data-kind=amazon], .note[data-kind=checking], .note[data-kind=off] { color: rgba(255,255,255,.6); }
   .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: #8a8f91; vertical-align: 1px; }
@@ -83,7 +84,7 @@
     </label>
   </div>
   <section class="now">
-    <div id="gstate" class="status" data-state="gray"><span class="dot"></span><span id="glabel"></span></div>
+    <div id="gstate" class="status" data-state="gray"><span class="dot"></span><span id="glabel"></span><a id="setkey" href="#" hidden>Set key</a></div>
     <div id="song" class="status">This song: nothing playing in Amazon Music.</div>
     <div id="lrcNote" class="status note" hidden></div>
     <button id="force" disabled title="Open a song's lyrics in Amazon Music first">Translate this song</button>

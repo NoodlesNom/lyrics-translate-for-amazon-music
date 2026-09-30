@@ -105,7 +105,7 @@
       <dl class="controls">
         <dt>Translate to</dt><dd>Target language: 23 languages, including English, Spanish, French, German, Japanese, Korean, Chinese (Simplified and Traditional), Arabic, Hindi and more.</dd>
         <dt>Translator</dt><dd><b>Gemini (needs key)</b> or <b>Google Translate</b>. Gemini is picked automatically once you save a key.</dd>
-        <dt>Gemini status dot</dt><dd><span class="dot g"></span>Gemini working, last reply 2 min ago · <span class="dot a"></span>Using Google (quota hit, timed out, error or unexpected reply) · <span class="dot r"></span>Invalid key · <span class="dot n"></span>No key, not used yet, or Google selected. While Gemini is selected, the floating button shows the same dot.</dd>
+        <dt>Gemini status dot</dt><dd><span class="dot g"></span>Gemini working, last reply 2 min ago · <span class="dot a"></span>Using Google (quota hit, timed out, error or unexpected reply) · <span class="dot r"></span>Invalid key · <span class="dot n"></span>No key, not used yet, or Google selected. When it says <b>No key</b>, a <b>Set key</b> link next to it opens the settings page. While Gemini is selected, the floating button shows the same dot.</dd>
         <dt>This song</dt><dd>The current song's title and artist, its detected language(s) and state, for example "Japanese + English · Translated with Gemini (from cache)", "English · Already in English, no translation needed" or "Translating…". For songs Amazon has no lyrics for, a second line says where the lyrics came from: "Lyrics added from LRCLIB (synced)", or "Amazon has no lyrics; none found on LRCLIB". If LRCLIB only had a romanization, it says so, for example "LRCLIB lyrics were already romanized (Japanese) · original script guessed by Gemini".</dd>
         <dt>Translate this song</dt><dd>Translates the open song again with the selected translator and stops it being skipped.</dd>
         <dt>Text size</dt><dd>Small (85%), Default, Large (120%) or Extra large (145%).</dd>
@@ -123,8 +123,9 @@
     <h2>What's new</h2>
     <p class="sub">Recent versions, newest first. Full history and downloads in the <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases">releases</a>.</p>
     <div class="changelog">
+      <div class="card"><h3>1.3.8</h3><p>When Gemini is selected and there is no API key, the popup shows a <b>Set key</b> link that opens settings. The settings page links to Google's guide for creating an API key.</p></div>
       <div class="card"><h3>1.3.7</h3><p>Fixed lyrics jumping back and forth, caused by Amazon scrolling the lyrics on its own because of the text size difference. Unpacked copies show a ! on the floating button when an update is available.</p></div>
-      <div class="card"><h3>1.3.6</h3><p>LRCLIB lyrics that are only a romanization (romaji, Korean romanization or pinyin) now show as the romanization line under the translation, and a copy in the original script is preferred when LRCLIB has one. With Gemini, the Original lyrics line shows a marked guess (≈) of the original script; without it, romanized Japanese is translated from a hiragana guess. Tidier popup checkboxes, and the floating button shows the Gemini status dot.</p></div>
+      <div class="card"><h3>1.3.6</h3><p>LRCLIB lyrics that are only a romanization now sit under the translation, and a copy in the original script is preferred when one exists. With Gemini, Original lyrics shows a marked guess (≈) of that script. Tidier popup checkboxes, and the floating button shows the Gemini status dot.</p></div>
       <div class="card"><h3>1.3.5</h3><p>Fixed: after jumping ahead in a song, the highlighted line could scroll off screen (worse with big text). It now comes straight back to the middle of the lyrics. Popup fits without scroll bars again.</p></div>
       <div class="card"><h3>1.3.4</h3><p>First public release with LRCLIB lyrics and the smarter language check (1.3.0–1.3.3 were test builds, released together here). Copies installed with Load unpacked now tell you when a new version is out (a NEW badge and a download link in the popup) and get a <b>Check for updates</b> button. Store copies update automatically, as before.</p></div>
       <div class="card"><h3>1.3.3</h3><p><i>Test build, released in 1.3.4.</i> Smarter language check: songs already in your language never go to Gemini, even with look-alike characters, and mostly English songs only get their few foreign lines translated.</p></div>
@@ -139,7 +140,7 @@
   <div class="wrap">
     <h2>Optional: use Gemini with your own free key</h2>
     <ol class="steps">
-      <li>Get a free API key at <a href="https://aistudio.google.com/apikey">Google AI Studio</a>.</li>
+      <li>Get a free API key at <a href="https://aistudio.google.com/apikey">Google AI Studio</a>. <a href="https://ai.google.dev/gemini-api/docs/api-key">How to create an API key</a> is Google's guide. In the popup, <b>Set key</b> (shown when Gemini has no key) opens the same settings page.</li>
       <li>Click the extension icon, then <b>Settings</b>. Paste the key, click <b>Save</b>, then <b>Test key</b>.</li>
       <li>In the popup, <b>Translator</b> switches to <b>Gemini (needs key)</b>. Romanization still comes from Google Translate.</li>
     </ol>
