@@ -40,6 +40,7 @@ section > .wrap > p.sub { color: var(--muted); margin: 0 0 32px; max-width: 760p
 .split.rev { grid-template-columns: 1fr 1.35fr; }
 .split.rev .media { order: 2; }
 .split .media { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); }
+.split .media img { width: 100%; height: auto; }
 .split h3 { font-size: 24px; margin: 0 0 10px; }
 .split p, .split li { color: var(--muted); }
 .popup-wrap { display: grid; grid-template-columns: 340px 1fr; gap: 48px; align-items: start; }
