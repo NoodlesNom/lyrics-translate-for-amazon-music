@@ -595,11 +595,12 @@ async function evict(idx, n, keep) {
 // Only the song's title, artist and duration are sent (to lrclib.net, without cookies). LRCLIB asks clients to identify
 // themselves; browsers don't let extensions set User-Agent, so its documented alternative header Lrclib-Client is used.
 // Results share the song LRU: lrc:<key> = { v, id, dur, synced } | { v, id, dur, plain } (kept until evicted) | { none: 1, dur, until } (7 days).
-// v = LRC_VER (1.3.6+). A found result without it whose lyrics are romanized was chosen before 1.3.6 (which didn't look for
-// a copy in the original script): it is looked up again once, and the song's translations are dropped with it.
+// v = LRC_VER (1.3.6+). A found result from an older version is looked up again once when its lyrics are romanized
+// (before 1.3.6 a copy in the original script was not preferred) or not in the title's script (an English translation
+// from /api/get was kept). The song's translations are dropped only in that case, not for a cache already in script.
 const LRCLIB = 'https://lrclib.net/api';
 const LRC_CLIENT = `Lyrics Translate & Romanize for Amazon Music v${chrome.runtime.getManifest().version} (https://github.com/NoodlesNom/lyrics-translate-for-amazon-music)`;
-const LRC_NONE_MS = 7 * 864e5, LRC_MAX_DIFF = 3, LRC_VER = 2;
+const LRC_NONE_MS = 7 * 864e5, LRC_MAX_DIFF = 3, LRC_VER = 3;
 const lrcJobs = new Map();
 let lrcPauseUntil = 0; // after a 429: honor Retry-After
 
@@ -607,7 +608,10 @@ async function lrclib({ key, title, artist, duration }) {
   if (!key || !title || !artist || !(duration > 0)) return { status: 'error' };
   const lk = 'lrc:' + key;
   const { [lk]: hit } = await chrome.storage.local.get(lk);
-  const stale = !!hit && !hit.none && hit.v !== LRC_VER && !!detectRoman(lrcLines(hit)).lang; // romanized copy picked before 1.3.6
+  const cached = hit && !hit.none ? lrcLines(hit) : [];
+  const kind = titleScript(title);
+  // Once per LRC_VER: a romanized copy, or lyrics that are not in the title's script. Right-script caches stay.
+  const stale = !!hit && !hit.none && hit.v !== LRC_VER && (!!detectRoman(cached).lang || (!!kind && !inTitleScript(cached, kind)));
   // Same title/artist but another duration (e.g. a live version) is looked up again.
   if (hit && !stale && (!hit.none || hit.until > Date.now()) && !(Math.abs((hit.dur || duration) - duration) > LRC_MAX_DIFF)) {
     await touch(key);
@@ -618,7 +622,7 @@ async function lrclib({ key, title, artist, duration }) {
     lrcJobs.set(key, lrcLookup(title, artist, duration).then(async (rec) => {
       const dur = Math.round(duration);
       const value = rec ? (rec.syncedLyrics ? { v: LRC_VER, id: rec.id, dur, synced: rec.syncedLyrics } : { v: LRC_VER, id: rec.id, dur, plain: rec.plainLyrics }) : { none: 1, dur, until: Date.now() + LRC_NONE_MS };
-      if (stale) await chrome.storage.local.remove('song:' + key); // translations of the old romanized copy
+      if (stale) await chrome.storage.local.remove('song:' + key); // translations of the copy being replaced
       await storeLrc(key, value);
       return lrcView(value);
     }, (e) => ({ status: 'error', retryMs: e.retryMs || 0 })).finally(() => lrcJobs.delete(key)));
@@ -648,6 +652,37 @@ function nativeScript(lines, lang) {
   const n = lang === 'ja' ? (kana ? has(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u) : 0) : lang === 'ko' ? hangul : !kana ? han : 0;
   return ls.length > 0 && n >= ls.length * 0.3;
 }
+// Dominant non-Latin script of the Amazon title (SCRIPTS), or '' when the title is Latin — a lone look-alike letter
+// in an otherwise Latin title does not count. Mostly kana (ties included) → 'ja'; Hangul → 'ko'; Han and no kana → 'zh'.
+// Han that only outnumbers some kana → 'han' (kanji on the line; kana elsewhere in the song is fine).
+function titleScript(title) {
+  const letters = [...(title || '')].filter((c) => /\p{L}/u.test(c));
+  const foreign = letters.filter((c) => NON_LATIN.test(c));
+  if (!foreign.length || (foreign.length * 2 < letters.length && foreign.every((c) => LOOKALIKE.has(c)))) return '';
+  const counts = {};
+  for (const ch of foreign) {
+    const s = scriptOf(ch);
+    if (s !== 'latin') counts[s] = (counts[s] || 0) + 1;
+  }
+  let kind = '', n = 0;
+  const kana = counts.kana || 0;
+  const take = (k, c) => { if (c > n) { kind = k; n = c; } };
+  take('ja', kana); // first, so a tie with han/hangul stays Japanese
+  for (const [name, c] of Object.entries(counts)) {
+    if (name === 'kana') continue;
+    take(name === 'hangul' ? 'ko' : name === 'han' ? 'zh' : name, c);
+  }
+  if (!n || kind === 'other') return '';
+  return kind === 'zh' && kana ? 'han' : kind;
+}
+// At least 30% of lines that contain letters use the title's script. English lines may remain.
+// ja/ko/zh reuse nativeScript; 'han' and the other SCRIPTS names are letters of that script.
+function inTitleScript(lines, kind) {
+  if (kind === 'ja' || kind === 'ko' || kind === 'zh') return nativeScript(lines, kind);
+  const ls = lines.filter((l) => /\p{L}/u.test(l));
+  const re = (SCRIPTS.find(([name]) => name === kind) || [])[1];
+  return !!re && ls.length > 0 && ls.filter((l) => re.test(l)).length >= ls.length * 0.3;
+}
 
 // 1. /api/get with title, artist and duration (LRCLIB's own ±2 s match), checked again here.
 // 2. If that finds nothing, or only unsynced lyrics: /api/search (title + first artist); only close matches count:
@@ -655,6 +690,9 @@ function nativeScript(lines, lang) {
 // 3. (1.3.6) If the chosen lyrics are romanized (romaji, Korean romanization, pinyin): another close match from the search
 //    results (the same /api/search call, made now if step 2 didn't need it) that is written in the original script wins,
 //    synced before plain, then the closest duration. No other data is sent.
+// 4. If the Amazon title has a non-Latin letter and a close match is in that script, prefer it over a Latin/English one
+//    (an /api/get translation must not hide the original). Same lrcMatch rules; synced, then closest duration, among those
+//    matches only. If none are in the title's script, step 3 still applies.
 async function lrcLookup(title, artist, duration) {
   let best = null, list = null;
   const search = () => lrcFetch('/search', { track_name: title, artist_name: artists(artist)[0] || artist });
@@ -671,6 +709,20 @@ async function lrcLookup(title, artist, duration) {
     const cands = (Array.isArray(list) ? list : []).filter((r) => lrcMatch(r, title, artist, duration));
     cands.sort(byQuality);
     if (cands[0] && (cands[0].syncedLyrics || !best)) best = cands[0];
+  }
+  const kind = titleScript(title);
+  if (kind) {
+    if (!list) {
+      try { list = await search(); } catch (e) { /* search down: fall through to today's choice */ }
+    }
+    const seen = new Set();
+    const inScript = [best, ...(Array.isArray(list) ? list : [])].filter((r) => {
+      if (!r || (r.id != null && seen.has(r.id)) || !lrcMatch(r, title, artist, duration) || !inTitleScript(lrcLines(r), kind)) return false;
+      if (r.id != null) seen.add(r.id);
+      return true;
+    });
+    inScript.sort(byQuality);
+    if (inScript[0]) return inScript[0];
   }
   const roman = best ? detectRoman(lrcLines(best)).lang : '';
   if (!roman) return best;
