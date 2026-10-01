@@ -41,7 +41,8 @@
   const inflight = new Set();
   const blocks = new Set();
   const marks = new WeakMap(); // h4 -> "gen\u0001text" it was annotated for (no attributes written to React nodes)
-  let timer = 0, dead = false, lastSig = '', sigAt = 0, gen = 0; // gen changes when language/translator changes
+  let timer = 0, dead = false, lastSig = '', sigAt = 0, gen = 0; // gen changes when language/translator/song changes
+  let currentSongKey = '';
 
   const isOurs = (n) => {
     const el = n.nodeType === 1 ? n : n.parentElement;
@@ -109,13 +110,29 @@
     if (!settings.rom && !settings.trans) return;
     const lrcMode = !azOn && !amazon.length && !!lrc;
     const hosts = azOn ? az.els : lrcMode ? lrc.els : amazon;
-    const need = new Set();
+    const rows = [];
     const texts = [];
     for (const el of hosts) {
       const text = lineText(el);
       if (!text) continue;
+      rows.push({ el, text });
+      if (/\p{L}/u.test(text)) texts.push(text);
+    }
+    const sig = texts.join('\n');
+    if (sig !== lastSig) { lastSig = sig; sigAt = Date.now(); }
+    const key = lrcMode ? lrc.key : songKey(texts);
+    // A reload often has lyrics before the media-session title. The saved key is that title, so a
+    // playlist heading or a hash would miss the cache and translate the song again. Wait for it.
+    if (!lrcMode && (key.startsWith('dom:') || key.startsWith('h:'))) {
+      if (!fallbackAt) fallbackAt = Date.now();
+      if (Date.now() - fallbackAt < 4000) return schedule(250);
+    } else fallbackAt = 0;
+    // Results and request state are keyed by line text, so none of it may cross a song boundary.
+    // Keep the state when the same song is rescanned; storage is intentionally untouched.
+    resetSongState(key);
+    const need = new Set();
+    for (const { el, text } of rows) {
       if (!/\p{L}/u.test(text)) { if (!ownBlock(el)) render(el, text, {}, ''); continue; } // e.g. "♪": size only
-      texts.push(text);
       const mark = gen + '\u0001' + text;
       const block = ownBlock(el);
       const data = results.get(text);
@@ -124,16 +141,81 @@
       if (data) render(el, text, data, mark);
       else if (!inflight.has(text) && !(retryAt.get(text) > Date.now())) need.add(text);
     }
-    const sig = texts.join('\n');
-    if (sig !== lastSig) { lastSig = sig; sigAt = Date.now(); }
+    if (seenKey && key !== seenKey) seenKey = ''; // leaving and coming back counts as another play
+    warmCache(key);
+    // The full-view sweep is still collecting lines. Don't translate a partial list: one new line
+    // would send the whole song again and wipe the "from cache" time.
+    if (azOn && az && !az.done) return;
+    if (key && warmReady !== key) return; // storage check first, so a saved song is not sent again
     const wait = sigAt + STABLE_MS - Date.now();
     if (need.size && wait > 0) return schedule(wait);
-    if (need.size) request([...new Set(texts)], lrcMode ? lrc.key : songKey(texts), null, lrcMode ? lrc.roman : null); // the whole song, so Gemini gets full context
+    if (need.size) request([...new Set(texts)], key, null, lrcMode ? lrc.roman : null); // the whole song, so Gemini gets full context
+    else if (texts.length) touchSeen(key);
+  }
+
+  function resetSongState(key) {
+    if (!key || key === currentSongKey) return;
+    currentSongKey = key;
+    gen++;
+    for (const b of blocks) b.remove();
+    blocks.clear();
+    results.clear();
+    retryAt.clear();
+    inflight.clear();
+    warmed = '';
+    warmReady = '';
+    fromStore = false;
+    seenKey = '';
+  }
+
+  // Paint translations already stored for this track, so a return visit doesn't wait on Gemini.
+  let warmed = '', warmReady = '', fromStore = false;
+  function warmCache(key) {
+    if (!key || warmed === key || dead) return;
+    warmed = key;
+    warmReady = '';
+    fromStore = false;
+    let got;
+    try { got = chrome.storage.local.get(['song:' + key, 'geminiKey']); } catch (e) { warmReady = key; return; }
+    got.then((all) => {
+      if (dead || warmed !== key) return;
+      warmReady = key;
+      const entry = all['song:' + key];
+      if (!entry || !entry.lines) { schedule(0); return; }
+      const tl = settings.tl;
+      const gemOn = !!all.geminiKey && settings.translator !== 'google' && !(entry.noGemini && entry.noGemini[tl]);
+      for (const line of Object.keys(entry.lines)) {
+        const c = entry.lines[line] || {};
+        const fromGem = gemOn && c.g && tl in c.g;
+        const t = fromGem ? c.g[tl] : (c.t && tl in c.t ? c.t[tl] : undefined);
+        if (t === undefined) continue;
+        // A line already painted this session is still a cache hit. Skipping it used to leave
+        // fromStore false, so a return to this song never said "from cache".
+        fromStore = true;
+        if (results.has(line)) continue;
+        const d = { r: c.r || '', t };
+        if (c.o) d.o = c.o, d.og = c.og || '';
+        results.set(line, d);
+      }
+      schedule(0);
+    }, () => { if (warmed === key) { warmReady = key; schedule(0); } });
+  }
+
+  // A full cache hit never calls the translator, so tell the background this track was played again.
+  let seenKey = '', fallbackAt = 0;
+  function touchSeen(key) {
+    if (!key || seenKey === key || dead) return;
+    seenKey = key;
+    try { chrome.runtime.sendMessage({ type: 'seen', key }); } catch (e) { /* reloaded */ }
   }
 
   // done (popup "Translate this song" button) = force a fresh translation, then re-render every line and report back.
   // roman = { lang, lines } for romanized LRCLIB lyrics (see background.js detectRoman).
   function request(lines, key, done, roman) {
+    fromStore = false;
+    // persist() sets idx and entry.ts to the same time. touch() right after that would make
+    // idx > entry.ts, and the popup would say "from cache" for a translation that just happened.
+    if (key) seenKey = key;
     const { tl, translator } = settings;
     lines.forEach((l) => inflight.add(l));
     let resp;
@@ -141,8 +223,12 @@
       resp = chrome.runtime.sendMessage({ type: 'lyrics', key, lines, tl, force: !!done, roman: roman || undefined });
     } catch (e) { return shutdown(); } // extension was reloaded/removed
     resp.then((res) => {
-      lines.forEach((l) => inflight.delete(l));
+      const sameSong = currentSongKey === key;
+      // A song change clears inflight. Do not let an old response delete a new request
+      // for the same line or put the old song's result back into the shared map.
+      if (sameSong) lines.forEach((l) => inflight.delete(l));
       if (done) done(res ? { ok: res.ok, gemini: res.gemini } : {});
+      if (!sameSong) return;
       if (res && res.roman && lrc && lrc.key === key && lrc.roman) romanVerdict(res.roman);
       if (tl !== settings.tl || translator !== settings.translator) return schedule(0);
       if (done) gen++;
@@ -154,8 +240,9 @@
       if (!res || !res.ok) setTimeout(() => schedule(0), RETRY_MS + 100);
       scan();
     }, () => {
+      const sameSong = currentSongKey === key;
       if (done) done({});
-      lines.forEach((l) => { inflight.delete(l); retryAt.set(l, Date.now() + RETRY_MS); });
+      if (sameSong) lines.forEach((l) => { inflight.delete(l); retryAt.set(l, Date.now() + RETRY_MS); });
       if (!chrome.runtime || !chrome.runtime.id) shutdown();
     });
   }
@@ -243,6 +330,10 @@
     blocks.clear();
     results.clear();
     retryAt.clear();
+    warmed = '';
+    warmReady = '';
+    seenKey = '';
+    fromStore = false;
   }
 
   // Floating button (top-right) toggles an in-page panel that shows popup.html in an iframe.
@@ -489,9 +580,28 @@
     }
     return true;
   }
+  // Minimized, occluded (another app covering the window), or a hidden tab. The viewport is then
+  // 0 and getBoundingClientRect is empty, so onScreen() fails. Focus alone is not this: the toolbar
+  // popup blurs the page while the column still has a real box.
+  function viewBlind() {
+    return document.hidden || document.visibilityState === 'hidden' || innerWidth < 2 || innerHeight < 2;
+  }
   function stageView() {
-    const art = byTestid(STAGE_ART).find((e) => onScreen(e, 40)) || null;
-    const box = [...document.querySelectorAll(STAGE_LYRICS)].find((e) => onScreen(e, 0)) || null;
+    const arts = byTestid(STAGE_ART);
+    const boxes = [...document.querySelectorAll(STAGE_LYRICS)];
+    let art = arts.find((e) => onScreen(e, 40)) || null;
+    let box = boxes.find((e) => onScreen(e, 0)) || null;
+    if (!art && !box) {
+      const mounted = boxes.find((e) => e.querySelector('h4'));
+      const r = mounted && mounted.getBoundingClientRect();
+      const noBox = !r || r.width < 1 || r.height < 1;
+      // Rows are still in the DOM. Don't drop the sweep just because the window is covered,
+      // minimized, or unfocused and the viewport check can no longer see the column.
+      if (mounted && (viewBlind() || (!document.hasFocus() && noBox))) {
+        art = arts[0] || null;
+        box = mounted;
+      }
+    }
     if (!art && !box) return null;
     const filled = !!box && (!!box.querySelector('h4') || (box.children.length > 0 && box.getBoundingClientRect().width > 40));
     return { art, box, filled };
@@ -922,11 +1032,55 @@
     const seq = ++h.seq;
     h.timer = setTimeout(() => { if (azHarvest === h && h.seq === seq && !h.done) pumpHarvest(); }, ms);
   }
+  // Timers are throttled while the window is covered. Run the sweep as soon as it can see layout again.
+  document.addEventListener('visibilitychange', () => { if (!dead && azHarvest && !azHarvest.done) armHarvest(0); });
+  window.addEventListener('focus', () => { if (!dead && azHarvest && !azHarvest.done) armHarvest(0); });
+  // True when scroll geometry can't be trusted: hidden/occluded/minimized, or unfocused with no box.
+  function layoutBlind(sc) {
+    if (viewBlind()) return true;
+    return !document.hasFocus() && (!sc || sc.clientHeight < 2);
+  }
   function pumpHarvest() {
     const h = azHarvest;
     if (!h || h.done || !az || dead) return;
     const sc = azSc;
-    if (!sc || !sc.isConnected) return finishHarvest();
+    if (!sc || !sc.isConnected) {
+      // Covered/minimized: the node can drop out of layout for a moment. Finishing now would
+      // translate whatever rows had been mounted. Wait until the window can lay out again.
+      if (viewBlind()) { armHarvest(HARVEST_BEAT); return; }
+      return finishHarvest();
+    }
+    // Don't treat a 0-size viewport as the end of the lyrics (that would translate a partial list).
+    // Keep stepping the scroller while the window is covered. A blind pass can skip virtualized
+    // rows, so once layout is real again, start the sweep over from the top. Once.
+    if (layoutBlind(sc)) {
+      h.sawBlind = true;
+      const lines = linesIn(sc);
+      if (lines.length) h.texts = mergeForward(h.texts, lines.map(lineText));
+      // clientHeight is 0 while minimized; still walk scrollHeight by a fixed step.
+      const step = sc.clientHeight > 2 ? Math.max(48, Math.round(sc.clientHeight * 0.5)) : 200;
+      const max = Math.max(0, sc.scrollHeight - Math.max(0, sc.clientHeight));
+      if (max > 2 && sc.scrollTop < max - 2) {
+        sc.scrollTop = Math.min(max, sc.scrollTop + step);
+        h.blindMoved = true;
+      }
+      armHarvest(HARVEST_BEAT);
+      return;
+    }
+    if (h.sawBlind && h.blindMoved && !h.restarted) {
+      h.restarted = true;
+      h.sawBlind = false;
+      h.blindMoved = false;
+      h.texts = [];
+      h.nudges = 0;
+      h.quiet = 0;
+      h.wait = false;
+      h.key = '';
+      sc.scrollTop = 0;
+      armHarvest(0);
+      return;
+    }
+    h.sawBlind = false;
     const now = Date.now();
     if (h.wait) {
       const key = linesIn(sc).map(lineText).join('\n');
@@ -1278,7 +1432,7 @@
     if (msg.type === 'song') {
       // roman (v1.3.6): romanized LRCLIB lyrics: { lang, guess } (guess: 'gemini' | 'local' | '' = none; undefined = not known yet)
       const roman = fromLrc && lrc.roman ? (lrc.verdict ? { lang: lrc.verdict.lang, guess: lrc.verdict.guess } : { lang: lrc.roman.lang }) : undefined;
-      return send({ ...now, key, lines, source: fromLrc ? 'lrclib' : 'amazon', lrc: fromLrc ? lrcStatus() : undefined, roman, pending: lines.some((l) => inflight.has(l)), failed: lines.some((l) => retryAt.get(l) > Date.now()) });
+      return send({ ...now, key, lines, source: fromLrc ? 'lrclib' : 'amazon', lrc: fromLrc ? lrcStatus() : undefined, roman, pending: lines.some((l) => inflight.has(l)), failed: lines.some((l) => retryAt.get(l) > Date.now()), cached: fromStore && lines.every((l) => results.has(l)) });
     }
     if (msg.type === 'force') { request(lines, key, send, fromLrc ? lrc.roman : null); return true; }
   });

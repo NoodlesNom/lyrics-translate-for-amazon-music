@@ -219,7 +219,7 @@ const fetchT = (url, opts) => fetch(url, { ...opts, credentials: 'omit', signal:
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   autoCheckSoon(); // unpacked copies: the daily update check piggybacks on normal activity (no alarms permission)
   const job = msg && msg.type === 'lyrics' ? handle(msg) : msg && msg.type === 'testKey' ? testKey(msg.key)
-    : msg && msg.type === 'lrclib' ? lrclib(msg) : msg && msg.type === 'update' ? updateInfo(msg.manual) : msg && msg.type === 'gstate' ? gState() : null;
+    : msg && msg.type === 'seen' ? touch(msg.key) : msg && msg.type === 'lrclib' ? lrclib(msg) : msg && msg.type === 'update' ? updateInfo(msg.manual) : msg && msg.type === 'gstate' ? gState() : null;
   if (!job) return;
   job.then(sendResponse, (e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
   return true;
