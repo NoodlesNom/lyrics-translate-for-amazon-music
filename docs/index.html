@@ -33,7 +33,7 @@
       <a class="btn primary" href="https://microsoftedge.microsoft.com/addons/detail/lyrics-translate-romanize-for-amazon-music/jjfhmmdjbkcamelimddcogoopaljflff">Get it on Microsoft Edge<span class="bver" data-ver="store"></span></a>
       <a class="btn" href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest" title="Download the ZIP and load it unpacked">Get it on GitHub<span class="bver" data-ver="github"></span></a>
     </div>
-    <p class="note versions">Microsoft Add-ons store updates can take up to a week because Microsoft reviews each one. The GitHub version is always the newest. <a href="#new">See what's changed</a>.</p>
+    <p class="note versions">Microsoft Add-ons store updates can take up to a week because Microsoft reviews each one. The GitHub version is always the newest. <a href="#install">See install options</a>.</p>
     <p class="note">Free and open source (MIT). No account, no analytics. Not affiliated with Amazon.</p>
     <div class="shot"><img src="img/1-translated.png" width="1280" height="800" alt="The Amazon Music-style lyrics view on a demo page: each invented lyric line is shown as a large English translation with a small romanization underneath."></div>
     <p class="note">All screenshots use a local demo page with invented lyric lines.</p>
@@ -168,7 +168,7 @@
         <p class="upd-note"><b>Unpacked copies tell you when a new version is out</b> (a small NEW badge on the toolbar icon, a ! on the floating button, and a download link in the popup) <b>and have a Check for updates link at the bottom of the popup.</b> To update, unzip the new ZIP over your folder and press <b>Reload</b> on the extension card.</p>
         <p style="margin-top:14px"><a class="btn" href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/releases/latest" title="Download the ZIP and load it unpacked">Get it on GitHub<span class="bver" data-ver="github"></span></a></p></div>
     </div>
-    <p class="note versions" style="margin-top:18px">Microsoft Add-ons store updates can take up to a week because Microsoft reviews each one. The GitHub version is always the newest. <a href="#new">See what's changed</a>.</p>
+    <p class="note versions" style="margin-top:18px">Microsoft Add-ons store updates can take up to a week because Microsoft reviews each one. The GitHub version is always the newest. <a href="#features">See what's included</a>.</p>
     <p class="note" style="margin-top:8px">Only the English Amazon Music sites: music.amazon.com, .ca, .co.uk, .com.au, .in, and .ae. Other regional sites aren't included, because they can't be tested from here. If you can help test one, open an issue on <a href="https://github.com/NoodlesNom/lyrics-translate-for-amazon-music/issues">GitHub</a>. The Google Translate web endpoint is unofficial and rate-limited; if it refuses requests, lines stay as they are and the extension retries about a minute later.</p>
   </div>
 </section>
@@ -233,10 +233,6 @@ fetch('versions.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : Pro
     el.textContent = ' (v' + x + ')';
     if (when) el.parentElement.title = (el.parentElement.title ? el.parentElement.title + '. ' : '') + when;
   });
-  // The "store can lag behind GitHub" note only matters while GitHub is ahead; hide it when both show the same version.
-  if (ok(v.store) && ok(v.github) && v.store === v.github) {
-    document.querySelectorAll('.note.versions').forEach((el) => { el.hidden = true; });
-  }
 }).catch(() => {});
 </script>
 </body>
