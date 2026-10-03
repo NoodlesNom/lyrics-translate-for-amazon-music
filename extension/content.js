@@ -101,12 +101,13 @@
     floating();
     if (dead) return;
     const amazon = findLines();
-    // Full view + Amazon lyrics: our own list (same stage as LRCLIB), filled by sweeping their scroller.
-    // keepCheck must not run while that list is up: it would fight the sweep and a hidden scroller.
+    // Full lyrics view: our own list from the TrackLyricsPage response, at full size.
+    // Amazon's lyric scroller is never moved, including before that response and when it is empty.
+    // Rows are hidden only once those lines exist. Lyric-less songs use LRCLIB only.
     const azOn = syncAmazonStage(amazon);
-    checkLrc(amazon.length > 0);
-    if (azOn) unwatchAmazon();
-    else watchAmazon(amazon);
+    const playingNow = player();
+    const answered = playingNow && captureFor(playingNow.asin);
+    checkLrc(azOn || amazon.length > 0 || !!(answered && answered.lines.length));
     if (!settings.rom && !settings.trans) return;
     const lrcMode = !azOn && !amazon.length && !!lrc;
     const hosts = azOn ? az.els : lrcMode ? lrc.els : amazon;
@@ -131,16 +132,21 @@
     // Keep the state when the same song is rescanned; storage is intentionally untouched.
     resetSongState(key);
     const need = new Set();
+    const painted = [];
     for (const { el, text } of rows) {
       if (!/\p{L}/u.test(text)) { if (!ownBlock(el)) render(el, text, {}, ''); continue; } // e.g. "♪": size only
       const mark = gen + '\u0001' + text;
       const block = ownBlock(el);
       const data = results.get(text);
-      if (marks.get(el) === mark && block) continue;
+      // A mark match used to skip the line forever. A Gemini reply that replaces a painted Google
+      // translation must still redraw, without touching lines Gemini has not changed.
+      const again = repaint.has(text);
+      if (marks.get(el) === mark && block && !again) continue;
       if (block && marks.get(el) !== mark) { blocks.delete(block); block.remove(); } // stale (text changed in place)
-      if (data) render(el, text, data, mark);
+      if (data) { render(el, text, data, mark); if (again) painted.push(text); }
       else if (!inflight.has(text) && !(retryAt.get(text) > Date.now())) need.add(text);
     }
+    painted.forEach((t) => repaint.delete(t));
     if (seenKey && key !== seenKey) seenKey = ''; // leaving and coming back counts as another play
     warmCache(key);
     // The full-view sweep is still collecting lines. Don't translate a partial list: one new line
@@ -148,8 +154,12 @@
     if (azOn && az && !az.done) return;
     if (key && warmReady !== key) return; // storage check first, so a saved song is not sent again
     const wait = sigAt + STABLE_MS - Date.now();
-    if (need.size && wait > 0) return schedule(wait);
+    // Google-only cache (Gemini selected, no g[tl] yet): the lines are already painted, so `need` is
+    // empty and a plain cache hit would only touch() the LRU. Ask Gemini once the line list is stable.
+    const upgrade = !!(key && gemTried !== key && texts.some((t) => googleOnly.has(t)));
+    if ((need.size || upgrade) && wait > 0) return schedule(wait);
     if (need.size) request([...new Set(texts)], key, null, lrcMode ? lrc.roman : null); // the whole song, so Gemini gets full context
+    else if (upgrade) request([...new Set(texts)], key, null, lrcMode ? lrc.roman : null, true);
     else if (texts.length) touchSeen(key);
   }
 
@@ -166,10 +176,19 @@
     warmReady = '';
     fromStore = false;
     seenKey = '';
+    googleOnly = new Set();
+    gemTried = '';
+    repaint.clear();
   }
 
   // Paint translations already stored for this track, so a return visit doesn't wait on Gemini.
-  let warmed = '', warmReady = '', fromStore = false;
+  // googleOnly: lines whose cached translation is Google's (t[tl]) while Gemini is selected and this
+  // line has no g[tl] yet. mostly-Latin lines are not Gemini's job (background.js). A full Gemini
+  // cache hit leaves this empty, so those replays still never call the translator.
+  let warmed = '', warmReady = '', fromStore = false, gemTried = '';
+  let googleOnly = new Set();
+  const repaint = new Set(); // line texts whose on-screen translation must be redrawn
+  const latinLine = (l) => !NON_LATIN.test(l);
   function warmCache(key) {
     if (!key || warmed === key || dead) return;
     warmed = key;
@@ -180,10 +199,12 @@
     got.then((all) => {
       if (dead || warmed !== key) return;
       warmReady = key;
+      googleOnly = new Set();
       const entry = all['song:' + key];
       if (!entry || !entry.lines) { schedule(0); return; }
       const tl = settings.tl;
       const gemOn = !!all.geminiKey && settings.translator !== 'google' && !(entry.noGemini && entry.noGemini[tl]);
+      const mostly = !!(entry.mostly && entry.mostly[tl]);
       for (const line of Object.keys(entry.lines)) {
         const c = entry.lines[line] || {};
         const fromGem = gemOn && c.g && tl in c.g;
@@ -192,6 +213,9 @@
         // A line already painted this session is still a cache hit. Skipping it used to leave
         // fromStore false, so a return to this song never said "from cache".
         fromStore = true;
+        // Gemini was selected but this line was stored by Google (no g[tl]). Show t now, and let
+        // scan() ask Gemini. Lines already in the target language on a mostly-Latin song stay put.
+        if (gemOn && !fromGem && !(mostly && latinLine(line))) googleOnly.add(line);
         if (results.has(line)) continue;
         const d = { r: c.r || '', t };
         if (c.o) d.o = c.o, d.og = c.og || '';
@@ -201,7 +225,9 @@
     }, () => { if (warmed === key) { warmReady = key; schedule(0); } });
   }
 
-  // A full cache hit never calls the translator, so tell the background this track was played again.
+  // A cache hit that already has this translator's text never calls it, so tell the background this
+  // track was played again. A Google-only hit while Gemini is selected is not one of these: scan()
+  // sends a lyrics request instead (see googleOnly).
   let seenKey = '', fallbackAt = 0;
   function touchSeen(key) {
     if (!key || seenKey === key || dead) return;
@@ -211,13 +237,16 @@
 
   // done (popup "Translate this song" button) = force a fresh translation, then re-render every line and report back.
   // roman = { lang, lines } for romanized LRCLIB lyrics (see background.js detectRoman).
-  function request(lines, key, done, roman) {
-    fromStore = false;
+  // keep = the song is already painted from the Google cache. Do not clear that text or mark the lines
+  // in flight (the popup would say "Translating…" and a failure used to schedule a blank retry).
+  // When Gemini answers, its text replaces the painted line; if it does not, the Google text stays.
+  function request(lines, key, done, roman, keep) {
+    if (!keep) fromStore = false;
     // persist() sets idx and entry.ts to the same time. touch() right after that would make
     // idx > entry.ts, and the popup would say "from cache" for a translation that just happened.
-    if (key) seenKey = key;
+    if (key) { seenKey = key; gemTried = key; }
     const { tl, translator } = settings;
-    lines.forEach((l) => inflight.add(l));
+    if (!keep) lines.forEach((l) => inflight.add(l));
     let resp;
     try {
       resp = chrome.runtime.sendMessage({ type: 'lyrics', key, lines, tl, force: !!done, roman: roman || undefined });
@@ -226,25 +255,38 @@
       const sameSong = currentSongKey === key;
       // A song change clears inflight. Do not let an old response delete a new request
       // for the same line or put the old song's result back into the shared map.
-      if (sameSong) lines.forEach((l) => inflight.delete(l));
+      if (sameSong && !keep) lines.forEach((l) => inflight.delete(l));
       if (done) done(res ? { ok: res.ok, gemini: res.gemini } : {});
       if (!sameSong) return;
       if (res && res.roman && lrc && lrc.key === key && lrc.roman) romanVerdict(res.roman);
       if (tl !== settings.tl || translator !== settings.translator) return schedule(0);
       if (done) gen++;
       const got = (res && res.results) || {};
+      let replaced = false;
       for (const l of lines) {
-        if (got[l]) results.set(l, got[l]);
-        else retryAt.set(l, Date.now() + RETRY_MS);
+        if (!got[l]) {
+          // A kept Google line stays on screen. Only lines with nothing to show are retried.
+          if (!keep || !results.has(l)) retryAt.set(l, Date.now() + RETRY_MS);
+          continue;
+        }
+        const prev = results.get(l);
+        results.set(l, got[l]);
+        if (prev && !sameResult(prev, got[l])) { repaint.add(l); replaced = true; }
       }
-      if (!res || !res.ok) setTimeout(() => schedule(0), RETRY_MS + 100);
+      if (replaced) fromStore = false; // a new Gemini translation, not the cached Google one
+      if (!keep && (!res || !res.ok)) setTimeout(() => schedule(0), RETRY_MS + 100);
       scan();
     }, () => {
       const sameSong = currentSongKey === key;
       if (done) done({});
-      if (sameSong) lines.forEach((l) => { inflight.delete(l); retryAt.set(l, Date.now() + RETRY_MS); });
+      // keep: the Google translation is already visible. Leave it; the next load can try Gemini again.
+      if (sameSong && !keep) lines.forEach((l) => { inflight.delete(l); retryAt.set(l, Date.now() + RETRY_MS); });
       if (!chrome.runtime || !chrome.runtime.id) shutdown();
     });
+  }
+
+  function sameResult(a, b) {
+    return (a.t || '') === (b.t || '') && (a.r || '') === (b.r || '') && (a.o || '') === (b.o || '') && (a.og || '') === (b.og || '');
   }
 
   const flat = (s) => s.normalize('NFD').replace(/[\p{M}\p{P}\s]+/gu, '').toLowerCase();
@@ -317,8 +359,14 @@
     block.classList.toggle('amlt-main', !settings.orig);
   }
 
-  // Text size: one CSS variable on <html> (not a React node); content.css scales every line that holds our block.
-  const applySize = () => document.documentElement.style.setProperty('--amlt-scale', String(settings.size || 1));
+  // Text size: one CSS variable on <html> (not a React node). content.css scales Amazon lines
+  // that hold an .amlt block, and the full-view list (.amlt-stage-line) directly — that list is
+  // our own nodes, so it must not wait for a block before the popup size does anything.
+  function applySize() {
+    const scale = String(settings.size || 1);
+    document.documentElement.style.setProperty('--amlt-scale', scale);
+    document.querySelectorAll('.amlt-stage').forEach((el) => el.style.setProperty('--amlt-scale', scale));
+  }
 
   function refreshVisibility() {
     for (const b of blocks) (b.isConnected ? applyVisibility(b) : blocks.delete(b));
@@ -334,6 +382,9 @@
     warmReady = '';
     seenKey = '';
     fromStore = false;
+    googleOnly = new Set();
+    gemTried = '';
+    repaint.clear();
   }
 
   // Floating button (top-right) toggles an in-page panel that shows popup.html in an iframe.
@@ -400,34 +451,6 @@
     else if (e.data && e.data.amlt === 'height' && Number.isFinite(e.data.h)) panel.style.height = Math.min(Math.max(Math.round(e.data.h), 120), 800) + 'px';
   });
 
-  // ===================== Amazon's full view: keep the current line on screen =====================
-  // Only when our own full-view list is NOT showing (see syncAmazonStage). While that overlay is up, Amazon's rows
-  // are not annotated: during the sweep their scroller is still laid out (our list covers it) and afterwards it is
-  // display:none. keepCheck must not run in either state: it used to correct THEIR scrollTop, which fights the sweep
-  // and must not move a hidden scroller. Left in place for a lyrics list that is on screen but outside that overlay.
-  // Amazon's lyrics scroller (Stage_OverlaysContainer > scroller > list > one row per line > h4) scrolls by ITS row
-  // heights. While this watch is active, whenever the current line (the h4 with inline color white) changes, the
-  // scroller scrolls or rows resize, center the current row if it isn't fully visible or sits more than a quarter of
-  // the scroller's height from the middle. Smooth for short moves, instant for jumps of more than a screen. Paused for
-  // 3 s after the user wheels/touches/drags the lyrics.
-  const KEEP_DELAY = 100, KEEP_MAX_WAIT = 300, USER_PAUSE = 3000, BAND = 0.25, PER_SEC = 4;
-  const USER_EVENTS = ['wheel', 'touchmove', 'pointerdown'];
-  let keep = null; // { sc, list, mo, ro, timer, first, userAt, ownUntil, hits, row, rowN, lastAt, wanted }
-  const isWhite = (c) => {
-    c = (c || '').replace(/\s+/g, '').toLowerCase();
-    if (c === 'white' || c === '#fff' || c === '#ffffff') return true;
-    const m = /^rgba?\((\d+),(\d+),(\d+)(?:,([\d.]+))?\)$/.exec(c);
-    return !!m && +m[1] >= 250 && +m[2] >= 250 && +m[3] >= 250 && (m[4] === undefined || +m[4] >= 0.9);
-  };
-  // The current line: the h4 whose inline color is white (computed color only if Amazon sets no inline colors at all).
-  function currentLine(sc) {
-    const all = sc.querySelectorAll('h4[role="heading"]');
-    let inline = false;
-    for (const h of all) { const c = h.style.color; if (c) { inline = true; if (isWhite(c)) return h; } }
-    if (inline) return null; // e.g. right after a seek no line is white yet: wait for one
-    for (const h of all) if (isWhite(getComputedStyle(h).color)) return h;
-    return null;
-  }
   function scrollerOf(h4) {
     for (let n = h4.parentElement, i = 0; n && n !== document.body && i < 6; n = n.parentElement, i++) {
       if (n.matches(STAGE_LYRICS)) return null;
@@ -435,81 +458,6 @@
       if (oy === 'scroll' || oy === 'auto') return n;
     }
     return null;
-  }
-  function watchAmazon(lines) {
-    const h4 = !dead && lines[0];
-    const list = h4 && h4.parentElement && h4.parentElement.parentElement;
-    if (keep && list && keep.list === list && keep.sc.isConnected && keep.sc.contains(list)) return; // same list: nothing to do
-    const sc = h4 ? scrollerOf(h4) : null;
-    unwatchAmazon();
-    if (!sc || !list) return;
-    const k = keep = { sc, list, timer: 0, first: 0, userAt: 0, ownUntil: 0, hits: [], row: null, rowN: 0, lastAt: 0, wanted: false };
-    k.onScroll = () => { if (Date.now() < k.ownUntil) return; keepSoon('scroll'); };
-    // User scrolling: wheel, touch drags, and pressing the scroller itself (its scrollbar). A plain click or tap on a line
-    // is not scrolling, so it doesn't delay centering (in case Amazon seeks on click).
-    k.onUser = (e) => { if (e.type !== 'pointerdown' || e.target === sc) k.userAt = Date.now(); };
-    sc.addEventListener('scroll', k.onScroll, { passive: true });
-    for (const ev of USER_EVENTS) sc.addEventListener(ev, k.onUser, { passive: true });
-    // Current line (inline style of an h4), rows mounting, our blocks arriving; plus size changes of list and scroller.
-    k.mo = new MutationObserver(() => keepSoon('change'));
-    k.mo.observe(sc, { subtree: true, childList: true, attributes: true, attributeFilter: ['style'] });
-    k.ro = new ResizeObserver(() => keepSoon('change'));
-    k.ro.observe(sc); k.ro.observe(list);
-    keepSoon('change');
-  }
-  function unwatchAmazon() {
-    if (!keep) return;
-    const k = keep;
-    keep = null;
-    clearTimeout(k.timer);
-    k.mo.disconnect(); k.ro.disconnect();
-    k.sc.removeEventListener('scroll', k.onScroll);
-    for (const ev of USER_EVENTS) k.sc.removeEventListener(ev, k.onUser);
-  }
-  // Debounced (KEEP_DELAY after the last trigger, at most KEEP_MAX_WAIT after the first), so a burst of changes costs one check.
-  function keepSoon(why, delay = KEEP_DELAY) {
-    const k = keep;
-    if (!k) return;
-    if (why !== 'scroll') k.wanted = true; // a real change (not just scrolling) is worth a check once a user pause ends
-    const now = Date.now();
-    if (!k.timer) k.first = now;
-    else if (why !== 'retry' && now + delay - k.first > KEEP_MAX_WAIT) return;
-    clearTimeout(k.timer);
-    k.timer = setTimeout(keepCheck, delay);
-  }
-  function keepCheck() {
-    const k = keep;
-    if (!k) return;
-    k.timer = 0;
-    if (dead || !k.sc.isConnected) return unwatchAmazon();
-    const now = Date.now();
-    const paused = k.userAt + USER_PAUSE - now;
-    if (paused > 0) { if (k.wanted) keepSoon('retry', paused + 50); return; } // the user is reading/scrolling: hands off
-    if (now < k.ownUntil) return keepSoon('retry', k.ownUntil - now + 20); // our own smooth scroll is still running
-    k.wanted = false;
-    const h4 = currentLine(k.sc);
-    if (!h4) return;
-    const row = h4.parentElement && h4.parentElement !== k.list && k.list.contains(h4.parentElement) ? h4.parentElement : h4;
-    const sr = k.sc.getBoundingClientRect(), rr = row.getBoundingClientRect();
-    const H = k.sc.clientHeight;
-    if (!H || !rr.height) return;
-    const top = rr.top - sr.top - k.sc.clientTop, bottom = top + rr.height, mid = (top + bottom) / 2;
-    if (top >= -1 && bottom <= H + 1 && Math.abs(mid - H / 2) <= H * BAND) return; // comfortable: leave Amazon alone
-    const target = Math.round(Math.max(0, Math.min(k.sc.scrollHeight - H, k.sc.scrollTop + mid - H / 2)));
-    const dist = Math.abs(target - k.sc.scrollTop);
-    if (dist < 2) return; // already as centered as it can be (first/last lines, rows taller than the scroller)
-    // No fighting: at most PER_SEC corrections a second; the same line gets 3 quick ones, then one per 0.3 s, then per 2 s.
-    if (row !== k.row) { k.row = row; k.rowN = 0; }
-    k.hits = k.hits.filter((t) => now - t < 1000);
-    const gap = k.rowN < 3 ? 0 : k.rowN < 6 ? 300 : 2000;
-    const wait = Math.max(k.hits.length >= PER_SEC ? k.hits[0] + 1000 - now : 0, k.lastAt + gap - now);
-    if (wait > 0) return keepSoon('retry', wait + 10);
-    k.hits.push(now); k.lastAt = now; k.rowN++;
-    const smooth = dist <= H;
-    // Scroll events caused by our own scroll are ignored; one check afterwards catches Amazon scrolling back meanwhile.
-    k.ownUntil = now + (smooth ? 700 : 60);
-    k.sc.scrollTo({ top: target, behavior: smooth ? 'smooth' : 'instant' }); // 'instant' even if the page sets scroll-behavior: smooth
-    keepSoon('retry', smooth ? 750 : 150);
   }
 
   // ===================== LRCLIB fallback: synced lyrics when Amazon has none =====================
@@ -735,6 +683,7 @@
     } else root.append(scroll);
     let userAt = 0;
     for (const ev of ['wheel', 'touchmove', 'pointerdown']) scroll.addEventListener(ev, () => { userAt = Date.now(); }, { passive: true });
+    applySize();
     return { root, scroll, list, els, pad: !!pad, box: '', active: -1, jumped: false, userAt: () => userAt };
   }
   // Centers one of OUR lines. Does not read or write Amazon's scrollTop. Skipped for a few seconds after the user
@@ -794,22 +743,58 @@
     stage.list.style.paddingTop = stage.list.style.paddingBottom = pad;
   }
 
-  // Amazon lines in the full view: show the same .amlt-stage list LRCLIB uses, immediately, from whatever rows are
-  // already mounted (often only a short window). Do not annotate those rows. Our list covers their column. Behind it,
-  // scroll their scroller from top to bottom so it mounts the rest, and keep every line text in order. Nothing is
-  // invented. When the pass finishes (the scroller is at the end, or a short beat adds no lines), set their scroller
-  // to display:none so it is not painted, and show the collected lines. The white h4 picks the current line while
-  // that node is in the DOM (inline color still updates under display:none). Once it is gone, the playback clock
-  // picks the line: observed seconds-per-line if the white row moved before it vanished, otherwise equal slices of
-  // the collected lines. Only OUR scroller moves. No lyric lines means this overlay never starts (LRCLIB only).
-  let az = null, azSc = null, azTimer = 0, azHarvest = null;
-  const HARVEST_BEAT = 160;
-  function amazonInView(lines) {
-    // Empty Amazon column: do not create the overlay and do not scroll that scroller. Lyric-less songs use LRCLIB only.
-    if (dead || !lines.length) return null;
-    const st = stageView();
-    if (!st || !st.box || !st.box.contains(lines[0])) return null;
-    return st;
+  // Amazon lines in the full lyrics view: the page hook posts the TrackLyricsPage lines (text plus
+  // startTimeMillis / endTimeMillis). When that view is open and the response has lines for the playing
+  // track, draw them all at once in the same .amlt-stage list LRCLIB uses and hide Amazon's rows immediately.
+  // Nothing is scrolled on Amazon's scroller, and nothing is fetched from here. No lines (or the view is
+  // closed, or the song is only playing) means this overlay never starts; lyric-less songs stay on LRCLIB.
+  // The current line comes from those timestamps and position(), not from a white h4. A response with no
+  // timestamps falls back to the clock. Only OUR scroller moves.
+  let az = null, azSc = null, azTimer = 0;
+  const azCaptured = new Map(); // track id -> { ids, lines: [{text, start, end}] }
+  function sameCaptured(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i].text !== b[i].text || a[i].start !== b[i].start || a[i].end !== b[i].end) return false;
+    return true;
+  }
+  function rememberLyrics(ids, lines) {
+    const prev = azCaptured.get(ids[0]);
+    if (prev && sameCaptured(prev.lines, lines) && ids.every((id) => prev.ids.includes(id))) return false;
+    const rec = { ids: ids.slice(), lines: lines };
+    for (const id of ids) azCaptured.set(id, rec);
+    while (azCaptured.size > 8) azCaptured.delete(azCaptured.keys().next().value);
+    return true;
+  }
+  function captureFor(asin) {
+    if (!asin) return null;
+    return azCaptured.get(asin) || null;
+  }
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    try { if (location.origin && event.origin !== location.origin) return; } catch (e) { return; }
+    const data = event.data;
+    if (!data || data.source !== 'amlt-page' || data.type !== 'lyrics' || !Array.isArray(data.lines)) return;
+    const ids = [];
+    const raw = Array.isArray(data.ids) ? data.ids : [data.trackId];
+    for (const id of raw) if (typeof id === 'string' && id && !ids.includes(id)) ids.push(id);
+    if (!ids.length) return;
+    const lines = [];
+    for (const line of data.lines) {
+      if (!line || typeof line !== 'object') continue;
+      const start = typeof line.start === 'number' && isFinite(line.start) ? line.start : null;
+      const end = typeof line.end === 'number' && isFinite(line.end) ? line.end : null;
+      const text = typeof line.text === 'string' ? line.text : '';
+      if (!text.trim() && start == null && end == null) continue;
+      lines.push({ text: clean(text), start, end });
+    }
+    if (rememberLyrics(ids, lines) && !dead) schedule(0);
+  });
+  let pulledId = null;
+  function pullLyrics(asin) {
+    const id = asin || '';
+    if (pulledId === id) return;
+    pulledId = id;
+    try { window.postMessage({ source: 'amlt-ext', type: 'pull' }, location.origin || '*'); } catch (e) {}
   }
   function concealScroller(sc) {
     if (sc && sc.style.display !== 'none') sc.style.setProperty('display', 'none', 'important');
@@ -817,92 +802,75 @@
   function lyricsScroller(lines) {
     const shown = lines.filter((el) => el.getClientRects().length);
     const pool = shown.length ? shown : lines;
-    const seen = new Set();
-    const groups = [];
     for (const el of pool) {
-      const sc = scrollerOf(el) || el.closest(STAGE_LYRICS);
-      if (!sc || seen.has(sc)) continue;
-      seen.add(sc);
-      groups.push(sc);
+      const sc = scrollerOf(el);
+      if (sc) return sc;
     }
-    // A scroller we hid (display:none) still holds the previous song. Prefer a visible list
-    // whose lines are not that song, including when previous-track left the old node mounted.
-    const track = playingTrack();
-    if (azPrev && track && track !== azPrev.track) {
-      const fresh = groups.find((sc) => !sameSong(azPrev.texts, linesIn(sc).map(lineText)));
-      if (fresh) return fresh;
-    }
-    if (azSc && azSc.isConnected && azSc.style.display !== 'none' && groups.includes(azSc)) return azSc;
-    return groups[0] || null;
+    return null;
   }
-  function linesIn(sc) {
-    if (!sc) return [];
-    return findLines().filter((el) => sc.contains(el));
-  }
-  // Where win sits inside collected, or -1. Exact slice, so a repeated block resolves to the first copy.
-  function sliceStart(collected, win) {
-    if (!win.length || win.length > collected.length) return -1;
-    outer: for (let s = 0; s <= collected.length - win.length; s++) {
-      for (let i = 0; i < win.length; i++) if (collected[s + i] !== win[i]) continue outer;
-      return s;
-    }
-    return -1;
-  }
-  // Forward sweep: append only the part of this mounted window that continues the lines already seen.
-  function mergeForward(collected, win) {
-    if (!win.length) return collected;
-    if (!collected.length) return win.slice();
-    let best = 0, at = 0;
-    for (let s = 0; s <= collected.length; s++) {
-      let n = 0;
-      while (n < win.length && s + n < collected.length && collected[s + n] === win[n]) n++;
-      const atEnd = s + n >= collected.length;
-      if (n > best || (n === best && n > 0 && atEnd)) { best = n; at = s; }
-    }
-    if (best > 0 && at + best >= collected.length) return collected.concat(win.slice(best));
-    if (sliceStart(collected, win) >= 0) return collected;
-    return collected.concat(win);
-  }
-  function sameSong(collected, win) {
-    if (!win.length) return true; // rows unmounted for a moment: not a new song
-    if (!collected.length) return false;
-    if (sliceStart(collected, win) >= 0 || win.join('\n') === collected.join('\n')) return true;
-    // A virtualized window of this song shares most of its lines. One shared "♪" must not,
-    // or the previous song's stage stays up when the next track reuses the same scroller.
-    const have = new Set(collected);
-    let hit = 0;
-    for (const t of win) if (t && have.has(t)) hit++;
-    return hit >= 3 && hit / win.length >= 0.6;
-  }
-  // Playing track, so previous and next both drop the stage. Lyric text alone is not enough:
-  // going back reuses Amazon's scroller, and the old window can still overlap the new one.
+  // Which song the full-view list belongs to. Still used after the harvest code was removed:
+  // a track change drops that list. Without this, scan() throws once TrackLyricsPage lines
+  // exist and never reaches translation or the overlay.
   function playingTrack() {
     const p = dead ? null : player();
     if (!p || !p.title) return '';
     return p.id + '\u0001' + p.title;
   }
+  function columnHeads(st) {
+    const box = st && st.box;
+    if (!box) return [];
+    return [...box.querySelectorAll('h4[role="heading"]')];
+  }
+  // The lyrics column, not the now-playing stage by itself. A collapsed 0-wide placeholder is not open.
+  // Rows we hid stay in the DOM, so a connected h4 still counts after display:none.
+  function lyricsOpen(st) {
+    if (!st || !st.box) return false;
+    if (columnHeads(st).length) return true;
+    // Rows we hid are still in the column. If that node is gone, the lyrics view closed
+    // (x-ray or minimize) even when the column's box is still wide.
+    if (az && azSc && azSc.isConnected && st.box.contains(azSc)) return true;
+    if (az) return false;
+    const r = st.box.getBoundingClientRect();
+    return r.width >= 160 && r.height >= 120;
+  }
   function stageLines(texts) {
-    const els = texts.map((text) => {
+    return texts.map((text) => {
       const line = document.createElement('div');
       line.className = 'amlt-stage-line';
       line.dir = 'auto';
       line.textContent = text || '\u266a';
       return line;
     });
-    return els;
   }
-  function refillStage(texts) {
-    const sig = texts.join('\n');
-    if (!az || az.sig === sig) { if (az) az.texts = texts.slice(); return; }
-    for (const el of az.els) { const b = ownBlock(el); if (b) blocks.delete(b); marks.delete(el); }
-    const els = stageLines(texts);
-    az.list.replaceChildren(...els);
-    az.els = els;
-    az.sig = sig;
-    az.texts = texts.slice();
-    az.active = -1;
-    az.jumped = false;
+  function hideAmazonRows(st) {
+    const heads = columnHeads(st);
+    const sc = lyricsScroller(heads);
+    if (sc) { azSc = sc; concealScroller(sc); return; }
+    const list = heads[0] && heads[0].parentElement && heads[0].parentElement.parentElement;
+    if (list && list !== document.body) { azSc = list; concealScroller(list); }
   }
+  function watchAzHide(sc) {
+    if (!az || !sc) return;
+    if (az.mo) az.mo.disconnect();
+    az.mo = new MutationObserver(() => { if (az && azSc && azSc.isConnected) concealScroller(azSc); });
+    az.mo.observe(sc, { attributes: true, attributeFilter: ['style'] });
+  }
+  function dropAmazonStage(restore) {
+    clearInterval(azTimer);
+    azTimer = 0;
+    if (az) {
+      if (az.mo) az.mo.disconnect();
+      for (const el of az.els) { const b = ownBlock(el); if (b) blocks.delete(b); }
+      az.root.remove();
+      az = null;
+    }
+    if (restore && azSc && azSc.isConnected) {
+      azSc.style.removeProperty('display');
+      azSc.style.removeProperty('opacity');
+    }
+    if (restore) azSc = null;
+  }
+  function hideAmazonStage() { dropAmazonStage(true); }
   function applyActive(i) {
     if (!az || i < 0 || i === az.active) return;
     if (az.els[az.active]) az.els[az.active].classList.remove('amlt-stage-on');
@@ -918,241 +886,7 @@
     if (az.els[az.active]) az.els[az.active].classList.remove('amlt-stage-on');
     az.active = -1;
   }
-  // White h4 -> index in the lines we are showing. -1 if there is no white h4.
-  function indexFromWhite(sc, texts) {
-    if (!sc) return -1;
-    const h4 = currentLine(sc);
-    const lines = linesIn(sc);
-    const local = h4 ? lines.indexOf(h4) : -1;
-    if (local < 0) return -1;
-    const win = lines.map(lineText);
-    if (win.join('\n') === texts.join('\n')) return local;
-    const start = sliceStart(texts, win);
-    return start >= 0 ? start + local : -1;
-  }
-  function stopHarvest() {
-    if (!azHarvest) return;
-    clearTimeout(azHarvest.timer);
-    azHarvest.done = true;
-    azHarvest = null;
-  }
-  let azPrev = null; // { texts } of the stage we just dropped because the track changed
-  function dropAmazonStage(restore) {
-    clearInterval(azTimer);
-    azTimer = 0;
-    stopHarvest();
-    if (az) {
-      if (az.mo) az.mo.disconnect();
-      for (const el of az.els) { const b = ownBlock(el); if (b) blocks.delete(b); }
-      az.root.remove();
-      az = null;
-    }
-    if (restore && azSc && azSc.isConnected) {
-      azSc.style.removeProperty('display');
-      azSc.style.removeProperty('opacity');
-    }
-    if (restore) azSc = null;
-  }
-  function hideAmazonStage() { dropAmazonStage(true); }
-  // Hide Amazon's rows without painting a dark panel over them. Opacity keeps layout, so the
-  // sweep can still scroll and read the white h4. A solid background was a dark rectangle that
-  // didn't match the column and cut their lines off mid-word.
-  function veilScroller(sc) {
-    if (sc && sc.style.opacity !== '0') sc.style.setProperty('opacity', '0', 'important');
-  }
-  function watchAzScroller(sc) {
-    if (!az || az.mo) return;
-    az.mo = new MutationObserver(() => {
-      if (!az) return;
-      if (az.done) {
-        concealScroller(azSc);
-        const win = linesIn(azSc).map(lineText);
-        if (win.length && !sameSong(az.texts, win)) schedule(0);
-        else markAmazon();
-        return;
-      }
-      const h = azHarvest;
-      if (!h || h.done) return;
-      armHarvest(16);
-    });
-    az.mo.observe(sc, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style'] });
-  }
-  function harvestStep(sc, lines) {
-    const H = sc.clientHeight || 0;
-    if (lines.length >= 2) {
-      const a = lines[0].getBoundingClientRect();
-      const b = lines[lines.length - 1].getBoundingClientRect();
-      const span = b.bottom - a.top;
-      if (span > 40) return Math.max(32, Math.min(H ? H * 0.85 : span, span * 0.5));
-    }
-    return Math.max(48, H * 0.5 || 48);
-  }
-  function beginHarvest(sc) {
-    stopHarvest();
-    if (az) az.done = false;
-    azHarvest = { texts: [], timer: 0, seq: 0, done: false, wait: false, key: '', at: 0, quiet: 0, nudges: 0 };
-    sc.style.scrollBehavior = 'auto';
-    if (sc.scrollTop > 2) {
-      azHarvest.wait = true;
-      azHarvest.key = linesIn(sc).map(lineText).join('\n');
-      azHarvest.at = Date.now();
-      sc.scrollTop = 0;
-    }
-    armHarvest(azHarvest.wait ? 20 : 0);
-  }
-  function finishHarvest() {
-    const h = azHarvest;
-    if (!h || h.done || !az) return;
-    h.done = true;
-    clearTimeout(h.timer);
-    const sc = azSc;
-    const prevActive = az.active;
-    const prev = az.texts.slice();
-    const texts = h.texts.length ? h.texts.slice() : prev;
-    refillStage(texts);
-    let idx = sc && sc.isConnected && sc.style.display !== 'none' ? indexFromWhite(sc, az.texts) : -1;
-    // The sweep can leave a later row white. Don't center that line and then snap back.
-    if (prevActive >= 0 && idx >= 0 && Math.abs(idx - prevActive) > 2) idx = -1;
-    if (idx < 0 && prevActive >= 0) {
-      const start = sliceStart(az.texts, prev);
-      if (start >= 0) idx = start + prevActive;
-      else if (az.texts.length === prev.length) idx = prevActive;
-    }
-    az.done = true;
-    az.root.style.backgroundColor = '';
-    concealScroller(sc);
-    if (idx >= 0) applyActive(idx);
-    azHarvest = null;
-    schedule(0);
-  }
-  function armHarvest(ms) {
-    const h = azHarvest;
-    if (!h || h.done) return;
-    clearTimeout(h.timer);
-    const seq = ++h.seq;
-    h.timer = setTimeout(() => { if (azHarvest === h && h.seq === seq && !h.done) pumpHarvest(); }, ms);
-  }
-  // Timers are throttled while the window is covered. Run the sweep as soon as it can see layout again.
-  document.addEventListener('visibilitychange', () => { if (!dead && azHarvest && !azHarvest.done) armHarvest(0); });
-  window.addEventListener('focus', () => { if (!dead && azHarvest && !azHarvest.done) armHarvest(0); });
-  // True when scroll geometry can't be trusted: hidden/occluded/minimized, or unfocused with no box.
-  function layoutBlind(sc) {
-    if (viewBlind()) return true;
-    return !document.hasFocus() && (!sc || sc.clientHeight < 2);
-  }
-  function pumpHarvest() {
-    const h = azHarvest;
-    if (!h || h.done || !az || dead) return;
-    const sc = azSc;
-    if (!sc || !sc.isConnected) {
-      // Covered/minimized: the node can drop out of layout for a moment. Finishing now would
-      // translate whatever rows had been mounted. Wait until the window can lay out again.
-      if (viewBlind()) { armHarvest(HARVEST_BEAT); return; }
-      return finishHarvest();
-    }
-    // Don't treat a 0-size viewport as the end of the lyrics (that would translate a partial list).
-    // Keep stepping the scroller while the window is covered. A blind pass can skip virtualized
-    // rows, so once layout is real again, start the sweep over from the top. Once.
-    if (layoutBlind(sc)) {
-      h.sawBlind = true;
-      const lines = linesIn(sc);
-      if (lines.length) h.texts = mergeForward(h.texts, lines.map(lineText));
-      // clientHeight is 0 while minimized; still walk scrollHeight by a fixed step.
-      const step = sc.clientHeight > 2 ? Math.max(48, Math.round(sc.clientHeight * 0.5)) : 200;
-      const max = Math.max(0, sc.scrollHeight - Math.max(0, sc.clientHeight));
-      if (max > 2 && sc.scrollTop < max - 2) {
-        sc.scrollTop = Math.min(max, sc.scrollTop + step);
-        h.blindMoved = true;
-      }
-      armHarvest(HARVEST_BEAT);
-      return;
-    }
-    if (h.sawBlind && h.blindMoved && !h.restarted) {
-      h.restarted = true;
-      h.sawBlind = false;
-      h.blindMoved = false;
-      h.texts = [];
-      h.nudges = 0;
-      h.quiet = 0;
-      h.wait = false;
-      h.key = '';
-      sc.scrollTop = 0;
-      armHarvest(0);
-      return;
-    }
-    h.sawBlind = false;
-    const now = Date.now();
-    if (h.wait) {
-      const key = linesIn(sc).map(lineText).join('\n');
-      const changed = key !== h.key;
-      if (!changed && now - h.at < HARVEST_BEAT) {
-        armHarvest(30);
-        return;
-      }
-      h.wait = false;
-      if (!changed) {
-        const max = Math.max(0, sc.scrollHeight - sc.clientHeight);
-        const atEnd = max <= 1 || sc.scrollTop >= max - 2;
-        if (atEnd) return finishHarvest();
-        const next = Math.min(max, sc.scrollTop + harvestStep(sc, linesIn(sc)));
-        h.nudges++;
-        if (next <= sc.scrollTop + 1 || h.nudges >= 3) return finishHarvest();
-        h.key = key;
-        h.at = now;
-        h.wait = true;
-        sc.scrollTop = next;
-        clearTimeout(h.timer);
-        armHarvest(30);
-        return;
-      }
-      h.nudges = 0;
-    }
-    const lines = linesIn(sc);
-    const before = h.texts.length;
-    h.texts = mergeForward(h.texts, lines.map(lineText));
-    const grew = h.texts.length > before;
-    const max = Math.max(0, sc.scrollHeight - sc.clientHeight);
-    const atEnd = max <= 1 || sc.scrollTop >= max - 2;
-    if (grew) h.quiet = 0;
-    if (atEnd) {
-      if (!h.quiet) h.quiet = now;
-      if (!grew && now - h.quiet >= HARVEST_BEAT) return finishHarvest();
-      armHarvest(HARVEST_BEAT);
-      return;
-    }
-    h.quiet = 0;
-    const next = Math.min(max, sc.scrollTop + harvestStep(sc, lines));
-    if (next <= sc.scrollTop + 1) return finishHarvest();
-    h.wait = true;
-    h.key = lines.map(lineText).join('\n');
-    h.at = now;
-    sc.scrollTop = next;
-    clearTimeout(h.timer);
-    armHarvest(30);
-  }
-  // Remember (clock position, line index) while Amazon still paints a white h4, so a later clock fallback can
-  // keep that line's pace instead of slicing the song into equal parts. Seeks are just a new position.
-  function noteAmazonPace(i) {
-    if (!az || i < 0) return;
-    const c = readClock();
-    if (!c || c.pos == null) return;
-    const pos = position(c);
-    const samples = az.pace || (az.pace = []);
-    const last = samples[samples.length - 1];
-    if (last && last.i === i) return;
-    samples.push({ i, pos });
-    if (samples.length > 6) samples.shift();
-    const a = samples[samples.length - 2];
-    if (!a) return;
-    const di = samples[samples.length - 1].i - a.i;
-    const dp = pos - a.pos;
-    if (!di || dp <= 0.4) return;
-    const per = dp / di;
-    if (per < 0.4 || per > 30) return;
-    az.perLine = per;
-    az.paceAt = { i, pos };
-  }
-  // No timestamps on Amazon lines. Prefer the pace observed from the white row; otherwise equal slices of duration.
+  // No timestamps on the response. Equal slices of the playback duration (the clock fallback).
   function indexFromClock() {
     if (!az) return -1;
     const n = az.els.length;
@@ -1160,110 +894,109 @@
     const c = readClock();
     if (!c || c.pos == null) return -1;
     const pos = position(c);
-    if (az.perLine > 0 && az.paceAt) {
-      const i = Math.round(az.paceAt.i + (pos - az.paceAt.pos) / az.perLine);
-      return Math.max(0, Math.min(n - 1, i));
-    }
     if (!(c.dur > 0)) return -1;
     let i = Math.floor(Math.min(1, Math.max(0, pos / c.dur)) * n);
     if (i >= n) i = n - 1;
     return Math.max(0, i);
   }
+  // Response times are milliseconds. position() is seconds. A line with no start is not chosen here.
+  // If none of the lines have a start, or the playhead is outside every timed span while some line
+  // has no start, the clock fallback is used. A gap between timed lines highlights nothing.
+  function indexFromTimes() {
+    if (!az || !az.els.length) return -1;
+    const times = az.times || [];
+    const ends = az.ends || [];
+    let any = false;
+    for (let i = 0; i < times.length; i++) if (times[i] != null) { any = true; break; }
+    if (!any) return indexFromClock();
+    const c = readClock();
+    if (!c || c.pos == null) return -1;
+    const pos = position(c) * 1000;
+    let hit = -1;
+    let missing = false;
+    for (let i = 0; i < az.els.length; i++) {
+      const start = times[i];
+      if (start == null) { missing = true; continue; }
+      let end = ends[i];
+      if (end == null) {
+        end = Infinity;
+        for (let j = i + 1; j < times.length; j++) if (times[j] != null) { end = times[j]; break; }
+      }
+      if (pos >= start && pos < end) hit = i;
+    }
+    if (hit >= 0) return hit;
+    if (missing) return indexFromClock();
+    return -1;
+  }
   function markAmazon() {
-    if (!az || !azSc) return;
-    const lines = linesIn(azSc);
-    const i = lines.length ? indexFromWhite(azSc, az.texts) : -1;
-    // While the sweep scrolls Amazon's list, a later row can flash white. Following it centers
-    // the wrong line, then the real current line comes back. Hold the line we already have.
-    if (!az.done) {
-      if (az.active >= 0) return;
-      if (i >= 0 && lines.map(lineText).join('\n') === az.sig) applyActive(i);
-      return;
-    }
-    if (i >= 0) {
-      // A seek jumps the white row. Drop the pace so the clock can't keep projecting the old one.
-      if (az.active >= 0 && Math.abs(i - az.active) > 2) { az.pace = []; az.perLine = 0; az.paceAt = null; }
-      else noteAmazonPace(i);
-      az.whiteIdx = i;
-      az.whiteAt = Date.now();
-      applyActive(i);
-      return;
-    }
-    // No white row while lines are still mounted: Amazon is between lines, so nothing is current.
-    // Clear the highlight. Do not keep the previous line lit, and do not center a later one.
-    if (lines.length) { clearActive(); return; }
-    const j = indexFromClock();
-    if (j >= 0) applyActive(j);
+    if (!az) return;
+    const i = indexFromTimes();
+    if (i >= 0) applyActive(i);
+    else clearActive();
+  }
+  function showAmazonLines(pack, st, track) {
+    const texts = pack.lines.map((line) => line.text);
+    const sig = texts.join('\n');
+    if (!az || !az.root.isConnected) {
+      az = createStage({ aria: 'Lyrics', credit: '', plain: false, pad: true, specs: texts.map((text) => ({ text, roman: false })) });
+      az.sig = sig;
+      az.texts = texts.slice();
+      az.times = pack.lines.map((line) => line.start);
+      az.ends = pack.lines.map((line) => line.end);
+      az.track = track;
+      az.done = true;
+      anchor = null;
+      placeStage(az, st);
+      document.body.appendChild(az.root);
+      if (!azTimer) azTimer = setInterval(tickAmazon, 200);
+    } else if (az.sig !== sig) {
+      for (const el of az.els) { const b = ownBlock(el); if (b) blocks.delete(b); marks.delete(el); }
+      const els = stageLines(texts);
+      az.list.replaceChildren(...els);
+      az.els = els;
+      az.sig = sig;
+      az.texts = texts.slice();
+      az.times = pack.lines.map((line) => line.start);
+      az.ends = pack.lines.map((line) => line.end);
+      az.track = track;
+      az.active = -1;
+      az.jumped = false;
+      az.done = true;
+    } else az.track = track;
+    // Measure the column, then hide Amazon's rows in this same turn (no scroll, no partial list).
+    placeStage(az, st);
+    hideAmazonRows(st);
+    if (azSc) watchAzHide(azSc);
+    az.root.classList.toggle('amlt-stage-covered', coveredStage(az, st));
+    markAmazon();
   }
   function tickAmazon() {
     if (!az || dead) return;
+    const st = stageView();
     const track = playingTrack();
-    if (track && az.track && track !== az.track) {
-      azPrev = { track: az.track, texts: az.texts.slice() };
+    const p = player();
+    const pack = p && captureFor(p.asin);
+    if (!st || !lyricsOpen(st) || !pack || !pack.lines.length || (track && az.track && track !== az.track)) {
       hideAmazonStage();
       return schedule(0);
     }
-    const lines = findLines();
-    const st = amazonInView(lines);
-    if (!st) { hideAmazonStage(); return schedule(0); }
-    const sc = lyricsScroller(lines);
-    if (!sc) return;
-    if (sc !== azSc) {
-      azSc = sc;
-      if (az.mo) { az.mo.disconnect(); az.mo = null; }
-      watchAzScroller(sc);
-      if (!az.done) beginHarvest(sc);
-    }
-    if (az.done) concealScroller(azSc);
-    else { az.root.style.backgroundColor = ''; veilScroller(azSc); }
+    hideAmazonRows(st);
     placeStage(az, st);
     az.root.classList.toggle('amlt-stage-covered', coveredStage(az, st));
-    const win = linesIn(azSc).map(lineText);
-    if (az.done && win.length && !sameSong(az.texts, win)) return schedule(0);
     markAmazon();
   }
-  function syncAmazonStage(lines) {
-    const st = amazonInView(lines);
-    if (!st) { hideAmazonStage(); return false; }
-    unwatchAmazon(); // do not fight Amazon's scroll with keepCheck while our list is up
+  function syncAmazonStage() {
+    const st = stageView();
+    if (!st || !lyricsOpen(st)) { hideAmazonStage(); return false; }
+    const p = dead ? null : player();
+    if (!p || !p.asin) { pullLyrics(''); return false; }
+    const pack = captureFor(p.asin);
+    if (!pack) { pullLyrics(p.asin); if (az) hideAmazonStage(); return false; }
+    // TrackLyricsPage answered with nothing. Do not start the overlay and do not scroll.
+    if (!pack.lines.length) { hideAmazonStage(); return false; }
     const track = playingTrack();
-    if (az && track && az.track && track !== az.track) {
-      azPrev = { track: az.track, texts: az.texts.slice() };
-      hideAmazonStage();
-    }
-    const sc = lyricsScroller(lines);
-    if (!sc) { hideAmazonStage(); return false; }
-    const scoped = linesIn(sc);
-    const win = scoped.map(lineText);
-    // Previous-track reuses the scroller, so the rows can still be the song we just left.
-    // Adopting them keys the stage to that song until playback passes it again.
-    if (!az && azPrev && track && track !== azPrev.track && win.length && sameSong(azPrev.texts, win)) {
-      schedule(200);
-      return false;
-    }
-    for (const el of scoped) {
-      const b = ownBlock(el);
-      if (b) { blocks.delete(b); b.remove(); }
-      marks.delete(el);
-    }
-    if (az && az.root.isConnected && (sc !== azSc || (az.done && !sameSong(az.texts, win)))) hideAmazonStage();
-    if (!az) {
-      azSc = sc;
-      az = createStage({ aria: 'Lyrics', credit: '', plain: false, pad: true, specs: win.map((text) => ({ text, roman: false })) });
-      az.sig = win.join('\n');
-      az.texts = win.slice();
-      az.track = track;
-      az.done = false;
-      azPrev = null;
-      document.body.appendChild(az.root);
-      watchAzScroller(sc);
-      if (!azTimer) azTimer = setInterval(tickAmazon, 200);
-      beginHarvest(sc);
-    }
-    if (!az.done) { az.root.style.backgroundColor = ''; veilScroller(sc); }
-    else concealScroller(sc);
-    placeStage(az, st);
-    markAmazon();
+    if (az && track && az.track && track !== az.track) hideAmazonStage();
+    showAmazonLines(pack, st, track);
     return true;
   }
 
@@ -1394,7 +1127,6 @@
     clearTimeout(timer);
     hideLrc();
     hideAmazonStage();
-    unwatchAmazon();
   }
 
   chrome.storage.onChanged.addListener((changes, area) => {

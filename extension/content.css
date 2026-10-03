@@ -14,7 +14,7 @@
   text-transform: none;
   pointer-events: none;
 }
-.amlt-rom, .amlt-trans { font-size: calc(18px * var(--amlt-scale, 1)); }
+.amlt-rom, .amlt-trans { font-size: calc(18px * var(--amlt-scale, 1)) !important; }
 .amlt-rom { font-style: normal; opacity: 0.8; }
 .amlt .amlt-off, .amlt:empty { display: none !important; }
 
@@ -54,7 +54,7 @@
    (Amazon's inline font-size is not !important, so this wins). */
 :has(> .amlt.amlt-main > .amlt-trans:not(.amlt-off)) { font-size: 0 !important; line-height: 0 !important; }
 .amlt.amlt-main:has(> .amlt-trans:not(.amlt-off)) { display: flex !important; flex-direction: column; margin: 0; font-family: inherit; }
-.amlt.amlt-main:has(> .amlt-trans:not(.amlt-off)) > .amlt-trans { order: -1; font-size: calc(28px * var(--amlt-scale, 1)); font-weight: 700; line-height: 1.3; }
+.amlt.amlt-main:has(> .amlt-trans:not(.amlt-off)) > .amlt-trans { order: -1; font-size: calc(28px * var(--amlt-scale, 1)) !important; font-weight: 700; line-height: 1.3; }
 .amlt.amlt-main:has(> .amlt-trans:not(.amlt-off)) > .amlt-rom {
   margin-top: 2px;
   font-family: EmberModernTextStd-Regular, "Amazon Ember", system-ui, sans-serif;
@@ -81,7 +81,9 @@
 .amlt-stage-line {
   box-sizing: border-box; min-height: 72px; padding: 20px 0; margin: 0;
   font-family: EmberModernDisplayStd-Bold, "Amazon Ember Display", "Amazon Ember", "Helvetica Neue", Arial, system-ui, sans-serif;
-  font-size: 24px; font-weight: 700; line-height: 1.3; letter-spacing: 0.2px; text-align: right;
+  /* Popup text size. !important so a page rule on divs cannot freeze this list at 24px.
+     Specificity stays below the "hide original" and romanized-line rules, which also use !important. */
+  font-size: calc(28px * var(--amlt-scale, 1)) !important; font-weight: 700; line-height: 1.3 !important; letter-spacing: 0.2px; text-align: right;
   color: rgba(255, 255, 255, 0.3); white-space: pre-wrap; overflow-wrap: break-word; transition: color 0.25s;
 }
 .amlt-stage-line.amlt-stage-on, .amlt-stage-plain .amlt-stage-line { color: rgb(255, 255, 255); }
@@ -90,11 +92,11 @@
 .amlt-stage-line.amlt-roman:has(> .amlt-rblock) { font-size: 0 !important; line-height: 0 !important; }
 .amlt.amlt-rblock { display: flex !important; flex-direction: column; margin: 0; font-family: inherit; }
 .amlt-rblock > div {
-  font-size: calc(18px * var(--amlt-scale, 1)); line-height: 1.35; font-weight: 400;
+  font-size: calc(18px * var(--amlt-scale, 1)) !important; line-height: 1.35; font-weight: 400;
   font-family: EmberModernTextStd-Regular, "Amazon Ember", system-ui, sans-serif;
 }
 .amlt-rblock > .amlt-rom { opacity: 0.8; }
-.amlt-rblock > .amlt-big { order: -1; margin-bottom: 2px; font-size: calc(28px * var(--amlt-scale, 1)); font-weight: 700; line-height: 1.3; font-family: inherit; opacity: 1; }
+.amlt-rblock > .amlt-big { order: -1; margin-bottom: 2px; font-size: calc(28px * var(--amlt-scale, 1)) !important; font-weight: 700; line-height: 1.3; font-family: inherit; opacity: 1; }
 .amlt-guess::before { content: "\2248\00a0"; opacity: 0.55; font-weight: 400; } /* "≈ ": a guess rebuilt from the romanization */
 .amlt-stage-credit {
   flex: 0 0 auto; padding-top: 6px; font: 400 11px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;

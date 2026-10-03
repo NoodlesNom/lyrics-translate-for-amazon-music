@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lyrics Translate & Romanize for Amazon Music",
-  "version": "1.3.9",
+  "version": "1.3.10",
   "description": "Translate lyrics in the Amazon Music web player and romanize non-Latin scripts, using Google Translate or your own Gemini key.",
   "permissions": [
     "storage"
@@ -16,6 +16,22 @@
     "service_worker": "background.js"
   },
   "content_scripts": [
+    {
+      "matches": [
+        "https://music.amazon.com/*",
+        "https://music.amazon.ca/*",
+        "https://music.amazon.co.uk/*",
+        "https://music.amazon.in/*",
+        "https://music.amazon.ae/*",
+        "https://music.amazon.com.au/*"
+      ],
+      "js": [
+        "lyrics-hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
     {
       "matches": [
         "https://music.amazon.com/*",

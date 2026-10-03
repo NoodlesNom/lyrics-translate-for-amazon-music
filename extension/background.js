@@ -347,6 +347,12 @@ async function handle({ key, lines, tl, force, roman }) {
 
   // 1. Gemini: the whole song in one request, or only its non-Latin lines when it's mostly in the target language
   //    (skipped while backing off after an error).
+  //    Lines that already have a Google translation (t[tl]) but no Gemini one (g[tl]) are not finished:
+  //    content.js shows t immediately and sends the song again. !gem(l) is what makes that replay reach
+  //    this request. Success writes g[tl] in the same song entry (the page and the next cache hit prefer
+  //    it); t[tl] is not removed, so choosing Google later still shows Google. A failure writes nothing
+  //    over t — the Google cache and the painted lines stay. mismatch still sets noGemini, so that one
+  //    song is not asked again.
   const paused = (geminiStatus && geminiStatus.until) > Date.now();
   const gemLines = lines.filter(forGem);
   if (useGemini && force && paused) geminiCode = geminiStatus.code; // popup names the reason for the pause
