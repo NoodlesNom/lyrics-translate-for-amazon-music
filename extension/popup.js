@@ -92,7 +92,7 @@ function noteKind(s) {
 const langName = (code) => { try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code.replace(/^iw/, 'he').split('-')[0]); } catch (e) { return code; } };
 const sameLang = (a, b) => { [a, b] = [a, b].map((x) => x.toLowerCase().replace(/^iw\b/, 'he')); return a === b || (a.split('-')[0] === b.split('-')[0] && a.split('-')[0] !== 'zh'); };
 async function describe({ key, lines, pending, failed, roman, cached: fromStore }) {
-  const { ['song:' + key]: entry = { lines: {} }, geminiKey, idx = {} } = await chrome.storage.local.get(['song:' + key, 'geminiKey', 'idx']);
+  const { ['song:' + key]: entry = { lines: {} }, ['skip:' + key]: skip, geminiKey, idx = {} } = await chrome.storage.local.get(['song:' + key, 'skip:' + key, 'geminiKey', 'idx']);
   const tl = $('tl').value;
   const gemOn = !!geminiKey && $('translator').value === 'gemini' && !(entry.noGemini && entry.noGemini[tl]);
   const langs = {}, used = new Set();
@@ -106,6 +106,11 @@ async function describe({ key, lines, pending, failed, roman, cached: fromStore 
     if (t !== undefined) served++;
     if (t) { used.add(fromGem ? 'Gemini' : 'Google'); translated++; }
     else if (t === '' && c.sl && !sameLang(c.sl, tl)) untranslated++;
+  }
+  // Same-language marker has no lyric lines stored. It is still "already in" the target language.
+  if (!served && skip && skip.tl && skip.tl[tl] && !(roman && roman.lang)) {
+    served = lines.length || 1;
+    if (!Object.keys(langs).length) langs[langName(tl)] = served;
   }
   const names = Object.keys(langs).sort((a, b) => langs[b] - langs[a]).slice(0, 3).join(' + ');
   const by = ['Gemini', 'Google'].filter((x) => used.has(x)).join(' + ');

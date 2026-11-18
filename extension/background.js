@@ -12,6 +12,9 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GE
 const SEP = '\n|\n';        // line separator that survives both translation and romanization
 const MAX_CHARS = 1800;     // per Google request
 const LIMITS = { songs: 2000, lines: 400, timeoutMs: 20000 }; // cached songs (LRU by last play), lines per song
+// Same-language songs (nothing to translate) are NOT song: entries. skip:<songKey> = { tl: { [tl]: 1 }, ts }
+// with its own LRU (skipIdx). Never counted in LIMITS.songs and never evicts song: or lrc: keys.
+const SKIP_CAP = 4000;
 
 const SCRIPTS = [
   ['hangul', /\p{Script=Hangul}/u],
@@ -263,9 +266,21 @@ function romTranslated(t, line, src, tl) {
 }
 async function handle({ key, lines, tl, force, roman }) {
   const sk = 'song:' + key;
-  const { [sk]: stored, geminiKey, geminiStatus } = await chrome.storage.local.get([sk, 'geminiKey', 'geminiStatus']);
+  const skipK = 'skip:' + key;
+  const { [sk]: stored, [skipK]: skip, geminiKey, geminiStatus } = await chrome.storage.local.get([sk, skipK, 'geminiKey', 'geminiStatus']);
   const { translator } = await chrome.storage.sync.get('translator');
   const rm = roman && ROMAN[roman.lang] && Array.isArray(roman.lines) ? roman : null;
+  // Already known to be in this target language: no Google detection, no Gemini, no lyric-line cache.
+  // A stored real translation wins (and drops the marker). "Translate this song" (force) still runs.
+  // 1.3.11: so does any non-Latin line. A marker can only describe an all-Latin song, so a Japanese line
+  // in the request means the marker was made from the wrong or a partial line list: translate as usual.
+  const hadT = cachedTranslation(stored, tl);
+  if (!force && !rm && skip && skip.tl && skip.tl[tl] && !hadT && lines.every(isLatin)) {
+    await markSkip(key, tl, skip);
+    const results = {};
+    for (const l of lines) results[l] = { r: '', t: '' };
+    return { ok: true, results };
+  }
   const entry = stored && !(rm && stored.rv !== ROMAN_VER) ? stored : { lines: {} };
   if (rm) entry.rv = ROMAN_VER;
   const romanSet = new Set(rm ? rm.lines : []);
@@ -391,7 +406,26 @@ async function handle({ key, lines, tl, force, roman }) {
     }
   }
 
-  await persist(key, entry, changed);
+  // Entirely in the target language (the case that used to store empty t[tl] on every line and set
+  // noGemini): do not write the line map, and do not take a slot in the 2000-song LRU. A tiny skip
+  // marker is enough for the next play. Mixed-script songs, real translations, romanized lyrics and
+  // Google/Gemini failures still persist() exactly as before. An older full entry already in storage
+  // is left untouched (not grown, not deleted).
+  // 1.3.11: fullyInTarget() only sees the lines of THIS request. When the stored entry already holds a real
+  // translation for this key, those lines are not the whole song (a partial list, or the next/previous song's
+  // lines read under this title while the player switches tracks). Writing a marker then hid the stored
+  // translation on every later visit (content.js read the marker first). Keep the entry as stored instead:
+  // no marker, no write of this request's lines (nor the noGemini flag step 0 may have set), LRU touch only.
+  if (!rm && fullyInTarget(entry, lines, tl)) {
+    if (!hadT) await markSkip(key, tl, skip);
+    else {
+      await persist(key, stored, false);
+      if (skip && skip.tl && skip.tl[tl]) await clearSkip(key, tl);
+    }
+  } else {
+    await persist(key, entry, changed);
+    if (skip && skip.tl && skip.tl[tl]) await clearSkip(key, tl);
+  }
   const results = {};
   let guess = '';
   for (const l of lines) {
@@ -567,6 +601,68 @@ function parse(data, n) {
   const t = split(trans), r = rom ? split(rom) : [];
   if (t.length !== n || (rom && r.length !== n)) return null;
   return { sl: typeof data[2] === 'string' ? data[2] : '', t, r };
+}
+
+// True when every line is Latin, already detected as the target language, and has no translation
+// to show (empty t[tl], no Gemini text). That is the "Already in <language>" song. Partial,
+// mixed-script and romanized songs are not this: they keep the full song: cache.
+function fullyInTarget(entry, lines, tl) {
+  if (!lines.length) return false;
+  for (const l of lines) {
+    if (!isLatin(l)) return false;
+    const c = entry.lines && entry.lines[l];
+    if (!c || !c.t || c.t[tl] !== '' || !c.sl || !sameLang(c.sl, tl)) return false;
+    if (c.g && c.g[tl]) return false;
+  }
+  return true;
+}
+function cachedTranslation(stored, tl) {
+  const lines = stored && stored.lines;
+  if (!lines) return false;
+  return Object.values(lines).some((c) => c && ((c.t && c.t[tl]) || (c.g && c.g[tl])));
+}
+
+// skip:<songKey> = { tl: { [tl]: 1 }, ts }. skipIdx is this marker's own LRU and never holds song keys
+// that persist() evicts. Passing the value just read avoids a second get when the caller has it.
+async function markSkip(key, tl, existing) {
+  const skipK = 'skip:' + key;
+  let prev = existing, skipIdx;
+  if (prev) skipIdx = (await chrome.storage.local.get('skipIdx')).skipIdx || {};
+  else {
+    const got = await chrome.storage.local.get([skipK, 'skipIdx']);
+    prev = got[skipK];
+    skipIdx = got.skipIdx || {};
+  }
+  const flags = { ...(prev && prev.tl) };
+  if (tl) flags[tl] = 1;
+  if (!Object.keys(flags).length) return;
+  const value = { tl: flags, ts: Date.now() };
+  skipIdx[key] = value.ts;
+  const overflow = Object.keys(skipIdx).length - SKIP_CAP;
+  const drop = [];
+  if (overflow > 0) {
+    const old = Object.keys(skipIdx).filter((k) => k !== key).sort((a, b) => skipIdx[a] - skipIdx[b]).slice(0, overflow);
+    for (const k of old) { delete skipIdx[k]; drop.push('skip:' + k); }
+  }
+  await chrome.storage.local.set({ [skipK]: value, skipIdx });
+  if (drop.length) await chrome.storage.local.remove(drop);
+}
+async function clearSkip(key, tl) {
+  const skipK = 'skip:' + key;
+  const got = await chrome.storage.local.get([skipK, 'skipIdx']);
+  const prev = got[skipK];
+  const skipIdx = got.skipIdx || {};
+  if (!prev || !prev.tl || !prev.tl[tl]) return;
+  delete prev.tl[tl];
+  if (!Object.keys(prev.tl).length) {
+    delete skipIdx[key];
+    await chrome.storage.local.set({ skipIdx });
+    await chrome.storage.local.remove(skipK);
+  } else {
+    prev.ts = Date.now();
+    skipIdx[key] = prev.ts;
+    await chrome.storage.local.set({ [skipK]: prev, skipIdx });
+  }
 }
 
 // ---------- Cache: song:<key> entries + a small LRU index {key: lastPlayed} ----------
@@ -795,7 +891,12 @@ function parseLrc(text) {
 }
 
 async function touch(key) {
-  const { idx = {} } = await chrome.storage.local.get('idx');
+  const skipK = 'skip:' + key, songK = 'song:' + key, lrcK = 'lrc:' + key;
+  const got = await chrome.storage.local.get(['idx', skipK, songK, lrcK]);
+  const skip = got[skipK], song = got[songK], lrc = got[lrcK];
+  // A same-language marker must not enter the song LRU (that would let it evict a real translation).
+  if (skip && skip.tl && !song && !lrc) { await markSkip(key, null, skip); return; }
+  const idx = got.idx || {};
   idx[key] = Date.now();
   await chrome.storage.local.set({ idx });
 }

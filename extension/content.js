@@ -131,6 +131,13 @@
     // Results and request state are keyed by line text, so none of it may cross a song boundary.
     // Keep the state when the same song is rescanned; storage is intentionally untouched.
     resetSongState(key);
+    // Same-language marker: nothing to translate. In memory only, so this play does not
+    // ask Google or Gemini and no translation is painted.
+    // 1.3.11: never for a non-Latin line (a marker only describes an all-Latin song); that line is requested.
+    if (skipKey === key) {
+      fromStore = true;
+      for (const text of texts) if (!results.has(text) && latinLine(text)) results.set(text, { r: '', t: '' });
+    }
     const need = new Set();
     const painted = [];
     for (const { el, text } of rows) {
@@ -178,6 +185,7 @@
     seenKey = '';
     googleOnly = new Set();
     gemTried = '';
+    skipKey = '';
     repaint.clear();
   }
 
@@ -185,22 +193,32 @@
   // googleOnly: lines whose cached translation is Google's (t[tl]) while Gemini is selected and this
   // line has no g[tl] yet. mostly-Latin lines are not Gemini's job (background.js). A full Gemini
   // cache hit leaves this empty, so those replays still never call the translator.
-  let warmed = '', warmReady = '', fromStore = false, gemTried = '';
+  let warmed = '', warmReady = '', fromStore = false, gemTried = '', skipKey = '';
   let googleOnly = new Set();
   const repaint = new Set(); // line texts whose on-screen translation must be redrawn
   const latinLine = (l) => !NON_LATIN.test(l);
+  // Same test as cachedTranslation() in background.js: any line with a non-empty translation for tl.
+  const hasTranslation = (entry, tl) => !!(entry && entry.lines) && Object.values(entry.lines).some((c) => c && ((c.t && c.t[tl]) || (c.g && c.g[tl])));
   function warmCache(key) {
     if (!key || warmed === key || dead) return;
     warmed = key;
     warmReady = '';
     fromStore = false;
+    skipKey = '';
     let got;
-    try { got = chrome.storage.local.get(['song:' + key, 'geminiKey']); } catch (e) { warmReady = key; return; }
+    try { got = chrome.storage.local.get(['song:' + key, 'skip:' + key, 'geminiKey']); } catch (e) { warmReady = key; return; }
     got.then((all) => {
       if (dead || warmed !== key) return;
       warmReady = key;
       googleOnly = new Set();
+      const skip = all['skip:' + key];
       const entry = all['song:' + key];
+      // Marker for this target language: do not read or extend the lyric-line cache, and do not
+      // upgrade it to Gemini. scan() fills empty in-memory results so the lines are not requested.
+      // 1.3.11: a stored real translation wins over a marker (as in background.js and the popup). A stale
+      // marker next to a translated entry used to blank the song while the popup said "from cache".
+      if (skip && skip.tl && skip.tl[settings.tl] && !hasTranslation(entry, settings.tl)) { skipKey = key; fromStore = true; schedule(0); return; }
+      skipKey = '';
       if (!entry || !entry.lines) { schedule(0); return; }
       const tl = settings.tl;
       const gemOn = !!all.geminiKey && settings.translator !== 'google' && !(entry.noGemini && entry.noGemini[tl]);
@@ -384,6 +402,7 @@
     fromStore = false;
     googleOnly = new Set();
     gemTried = '';
+    skipKey = '';
     repaint.clear();
   }
 
@@ -533,6 +552,77 @@
   // popup blurs the page while the column still has a real box.
   function viewBlind() {
     return document.hidden || document.visibilityState === 'hidden' || innerWidth < 2 || innerHeight < 2;
+  }
+  // Amazon's three-dots menu on the lyrics view: a small popover (role=menu / ContextMenu), usually
+  // portaled on document.body outside the full-view section, often with a full-screen dismiss layer.
+  // That layer is the element at the center of our lyric box, so coveredStage used to treat it as
+  // "something else is drawn over the lyrics" and hide the whole stage. The queue is a tall panel and
+  // is not this menu.
+  function lyricsOverflowMenu() {
+    const nodes = document.querySelectorAll('[role="menu"], [role="menuitem"], [data-testid*="ContextMenu"], [data-testid*="DropdownMenu"]');
+    for (const el of nodes) {
+      if (!el.isConnected || el.closest('.amlt, .amlt-stage, .amlt-panel, .amlt-float')) continue;
+      // The mini-player's ContextMenu control is always in the DOM (a ~28px button). Only an open menu counts.
+      if (el.getAttribute('role') === 'button') continue;
+      const host = el.closest('[role="menu"]') || el;
+      const id = (host.getAttribute('data-testid') || '') + ' ' + (host.getAttribute('aria-label') || '');
+      if (/queue/i.test(id) || host.closest('[data-testid*="PlayQueue"], [data-testid*="Queue"]')) continue;
+      const r = host.getBoundingClientRect();
+      if (r.width < 8 || r.height < 8) continue;
+      if (r.width < 48 && r.height < 48) continue;
+      if (r.width > 520 || r.height > innerHeight * 0.85) continue;
+      return host;
+    }
+    return null;
+  }
+  function lyricsOverflowOpen() {
+    if (lyricsOverflowMenu()) return true;
+    const btns = document.querySelectorAll('[aria-expanded="true"]');
+    for (const b of btns) {
+      if (b.closest('[data-testid*="PlayQueue"], [data-testid*="Queue"]')) continue;
+      const label = ((b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('data-testid') || '')).toLowerCase();
+      if (label.includes('queue')) continue;
+      if (b.getAttribute('aria-haspopup') === 'menu' || /more options|contextmenu|overflow/.test(label)) return true;
+    }
+    return false;
+  }
+  function fullViewMounted() {
+    return !!(byTestid(STAGE_ART)[0] || document.querySelector(STAGE_LYRICS));
+  }
+  let raisedMenu = null;
+  function raiseLyricsMenu(menu) {
+    let layer = menu;
+    for (let n = menu; n && n !== document.body; n = n.parentElement) {
+      if (n.querySelector && (n.querySelector(STAGE_LYRICS) || n.querySelector('[data-testid*="Stage_TileImage"]'))) break;
+      const pos = getComputedStyle(n).position;
+      if (pos === 'fixed' || pos === 'absolute') layer = n;
+    }
+    if (raisedMenu && raisedMenu !== layer) restoreLyricsMenu();
+    if (getComputedStyle(layer).position === 'static') return;
+    if (raisedMenu !== layer) {
+      layer.dataset.amltZ = layer.style.zIndex || '';
+      layer.style.zIndex = '2147482996';
+      raisedMenu = layer;
+    }
+  }
+  function restoreLyricsMenu() {
+    if (!raisedMenu) return;
+    raisedMenu.style.zIndex = raisedMenu.dataset.amltZ || '';
+    delete raisedMenu.dataset.amltZ;
+    raisedMenu = null;
+  }
+  // Keep lyrics visible while that menu is open: never mark the stage covered, and lift the menu
+  // above our overlay so its items stay clickable. The queue still covers the stage.
+  function syncStageCover(stage, st) {
+    if (!stage || !stage.root) return;
+    const menu = lyricsOverflowMenu();
+    if (menu || lyricsOverflowOpen()) {
+      stage.root.classList.remove('amlt-stage-covered');
+      if (menu) raiseLyricsMenu(menu);
+      return;
+    }
+    restoreLyricsMenu();
+    if (st) stage.root.classList.toggle('amlt-stage-covered', coveredStage(stage, st));
   }
   function stageView() {
     const arts = byTestid(STAGE_ART);
@@ -722,6 +812,35 @@
     }
     return scr || col;
   }
+  // The vertical extent of Amazon's own lyric box (the az stage from lyricCover: their scroller and column), kept per
+  // layout (window height + art size) relative to the art. LRCLIB songs have no Amazon scroller to measure (their column
+  // is an empty 0-wide placeholder), so stageBox gives the LRCLIB stage this same top and bottom instead of the shorter
+  // art-based guess. Saved in chrome.storage.local (stageGeom) so it is known before the first Amazon-lyrics song too.
+  let azGeoms = [], azGeomTimer = 0; // [{ H, ah, dt, db }], most recent first
+  try {
+    chrome.storage.local.get('stageGeom').then((all) => {
+      if (!azGeoms.length && Array.isArray(all.stageGeom)) azGeoms = all.stageGeom.filter((g) => g && isFinite(g.H) && isFinite(g.ah) && isFinite(g.dt) && isFinite(g.db)).slice(0, 6);
+      if (lrc && !dead) { lrc.box = ''; placeLrc(stageView()); }
+    }, () => {});
+  } catch (e) { /* extension reloaded */ }
+  function noteAzGeom(st, b) {
+    const art = st && st.art && st.art.getBoundingClientRect();
+    if (!art || art.height < 40 || b.width < 160 || b.height < 120) return;
+    const g = { H: innerHeight, ah: Math.round(art.height), dt: Math.round(b.top - art.top), db: Math.round(b.top + b.height - art.bottom) };
+    const i = azGeoms.findIndex((e) => Math.abs(e.H - g.H) <= 2 && Math.abs(e.ah - g.ah) <= 2);
+    if (i === 0 && azGeoms[0].dt === g.dt && azGeoms[0].db === g.db) return;
+    if (i >= 0) azGeoms.splice(i, 1);
+    azGeoms.unshift(g);
+    azGeoms.length = Math.min(azGeoms.length, 6);
+    clearTimeout(azGeomTimer);
+    azGeomTimer = setTimeout(() => { try { chrome.storage.local.set({ stageGeom: azGeoms }); } catch (e) { /* extension reloaded */ } }, 1000);
+  }
+  function azGeomFor(art) {
+    if (!art || art.height < 40) return null;
+    // Same layout first; else the latest one (Amazon's lyric column is laid out against the art, so the offsets carry over).
+    const g = azGeoms.find((e) => Math.abs(e.H - innerHeight) <= 2 && Math.abs(e.ah - art.height) <= 2) || azGeoms[0];
+    return g ? { top: Math.round(art.top + g.dt), bottom: Math.round(art.bottom + g.db) } : null;
+  }
   function placeStage(stage, st) {
     if (!stage || !st) return;
     let b = null;
@@ -731,6 +850,7 @@
         b = { left: Math.round(live.left), top: Math.round(live.top), width: Math.round(live.width), height: Math.round(live.height) };
         stage.cover = b;
       } else if (stage.cover) b = stage.cover; // scroller display:none collapses the column for a moment
+      if (b) noteAzGeom(st, b);
     }
     if (!b) b = stageBox(st);
     const sig = [b.left, b.top, b.width, b.height].join();
@@ -967,7 +1087,7 @@
     placeStage(az, st);
     hideAmazonRows(st);
     if (azSc) watchAzHide(azSc);
-    az.root.classList.toggle('amlt-stage-covered', coveredStage(az, st));
+    syncStageCover(az, st);
     markAmazon();
   }
   function tickAmazon() {
@@ -976,18 +1096,32 @@
     const track = playingTrack();
     const p = player();
     const pack = p && captureFor(p.asin);
-    if (!st || !lyricsOpen(st) || !pack || !pack.lines.length || (track && az.track && track !== az.track)) {
+    if ((track && az.track && track !== az.track) || !pack || !pack.lines.length) {
+      hideAmazonStage();
+      return schedule(0);
+    }
+    // Opening the three-dots menu can fade or unmount Amazon's column without leaving the lyrics
+    // view. Dropping our stage there removed the lyrics for as long as the menu was open.
+    if (!st || !lyricsOpen(st)) {
+      if (lyricsOverflowOpen() && fullViewMounted()) { syncStageCover(az, st); markAmazon(); return; }
       hideAmazonStage();
       return schedule(0);
     }
     hideAmazonRows(st);
     placeStage(az, st);
-    az.root.classList.toggle('amlt-stage-covered', coveredStage(az, st));
+    syncStageCover(az, st);
     markAmazon();
   }
   function syncAmazonStage() {
     const st = stageView();
-    if (!st || !lyricsOpen(st)) { hideAmazonStage(); return false; }
+    if (!st || !lyricsOpen(st)) {
+      if (lyricsOverflowOpen() && fullViewMounted() && az && az.root && az.root.isConnected) {
+        syncStageCover(az, st);
+        return true;
+      }
+      hideAmazonStage();
+      return false;
+    }
     const p = dead ? null : player();
     if (!p || !p.asin) { pullLyrics(''); return false; }
     const pack = captureFor(p.asin);
@@ -1047,11 +1181,15 @@
     const artRight = art ? art.right : col && col.width > 0 ? col.left : Math.round(W * 0.35);
     const right = box && box.right > artRight + 160 && box.right <= W ? box.right
       : col && col.right > artRight + 160 && col.right <= W ? col.right - 32 : W - 84;
-    const top = box && box.top >= 0 && box.top < H / 2 ? box.top : art ? art.top + 32 : Math.round(H * 0.15);
+    const open = !!box && box.width >= 160;
+    // LRCLIB (empty 0-wide placeholder column): the same top and bottom as Amazon's own lyric box (azGeomFor), so these
+    // lyrics get the taller stage too. Before Amazon's box was ever measured: the art-based guess below.
+    const geo = open ? null : azGeomFor(art);
+    const useGeo = !!geo && geo.top >= 0 && geo.top < H / 2 && geo.bottom > geo.top + 120;
+    const top = useGeo ? geo.top : box && box.top >= 0 && box.top < H / 2 ? box.top : art ? art.top + 32 : Math.round(H * 0.15);
     // Prefer the lyrics column's own bottom when it is actually open (a real width). art.bottom
-  // stops our list short of Amazon's, so their rows show underneath and fewer of our lines fit.
-  // The empty 0-wide placeholder (LRCLIB) keeps the art-based bottom the spot was measured with.
-  let bottom = box && box.width >= 160 && box.height > 160 ? box.bottom : art ? art.bottom - 22 : Math.round(H * 0.7);
+    // stops our list short of Amazon's, so their rows show underneath and fewer of our lines fit.
+    let bottom = open && box.height > 160 ? box.bottom : useGeo ? geo.bottom : art ? art.bottom - 22 : Math.round(H * 0.7);
     const room = right - (artRight + 48);
     const width = box && box.width >= 160 ? box.width : Math.min(room, Math.max(320, Math.round((right - artRight) * 0.684)));
     const left = box && box.width >= 160 ? box.left : right - width;
@@ -1064,12 +1202,14 @@
     return { left: Math.round(left), top: Math.round(top), width: Math.round(width), height: Math.round(Math.min(bottom, H - 8) - top) };
   }
   function placeLrc(st) { placeStage(lrc, st); }
-  // Hidden while something else of Amazon's (a menu, the queue) is drawn over the spot: the topmost page element at the
-  // box's center must belong to the full view (or be one of its ancestors).
+  // Hidden while something else of Amazon's that replaces this spot (the queue) is drawn over it: the topmost
+  // page element at the box's center must belong to the full view (or be one of its ancestors).
+  // The lyrics three-dots menu is not this; lyricsOverflowOpen() keeps the stage visible (see syncStageCover).
   // Our popup must not count. The in-page panel sits above the lyrics (higher z-index, on the right) so it is the
   // element at the center the whole time it is open, and visibility:hidden on .amlt-stage-covered cleared every lyric
   // until the panel closed. The toolbar popup steals document focus the same way: don't treat a blur as a cover.
   function coveredStage(stage, st) {
+    if (lyricsOverflowOpen()) return false;
     const r = stage.root.getBoundingClientRect();
     if (!r.width || !r.height || !document.elementsFromPoint || !document.hasFocus()) return false;
     const top = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2).find((e) => {
@@ -1089,9 +1229,16 @@
   function tickLrc() {
     if (!lrc || dead) return;
     const st = stageView(), p = player();
-    if (!lrc.root.isConnected || !st || st.filled || !p || p.id !== lrc.id || findLines().length) { hideLrc(); return schedule(0); }
+    if (!lrc.root.isConnected || !st || st.filled || !p || p.id !== lrc.id || findLines().length) {
+      if (lrc.root.isConnected && p && p.id === lrc.id && !findLines().length && lyricsOverflowOpen() && fullViewMounted()) {
+        syncStageCover(lrc, st);
+        return;
+      }
+      hideLrc();
+      return schedule(0);
+    }
     placeLrc(st);
-    lrc.root.classList.toggle('amlt-stage-covered', coveredLrc(st));
+    syncStageCover(lrc, st);
     if (!lrc.synced) return;
     const c = readClock();
     if (!c || c.pos === null) return;
